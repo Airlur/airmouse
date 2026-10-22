@@ -1,0 +1,57 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 准备 Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: 编译 Debug APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: 整理产物
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/AirMouse.apk
+          ls -lh out
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirMouse-apk
+          path: out/AirMouse.apk
+          retention-days: 30
+
+      - name: 发布到 Release（手机浏览器可直接下载）
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: AirMouse 最新构建
+          body: |
+            自动构建的 Debug 版 APK。
+            手机打开这个 Release 页面，点 `AirMouse.apk` 即可直接下载安装。
+          files: out/AirMouse.apk
+          overwrite_files: true
+          fail_on_unmatched_files: true
