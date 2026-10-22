@@ -11,68 +11,79 @@ import kotlin.math.sign
 import kotlin.math.sqrt
 
 /**
- * 空鼠引擎：把手机陀螺仪的角速度换算成鼠标相对位移。
+ * 空鼠引擎 v2
  *
- * 核心是「速率控制」而不是「位置控制」：
- *   指针的**速度**正比于手机的**角速度**，不做积分、不追踪绝对姿态。
- *   手机一停，指针立刻停 —— 所以永远不会漂出屏幕，也不需要「回中」按钮。
- *   （陀螺仪积分成角度再映射坐标的做法，十几秒就会飘到屏幕角落，不可用。）
+ * 相对 v1 的三处关键修复：
  *
- * 手机坐标系（竖持、屏幕朝向自己）：
- *   X 轴 = 屏幕水平向右
- *   Y 轴 = 屏幕竖直向上
- *   Z 轴 = 垂直屏幕指向自己
+ * 1) v1 只用了陀螺仪的 X / Y 两个轴，Z 轴（绕屏幕法线的翻转）被整段丢弃。
+ *    而手持手机「摇晃」时，主导的角速度恰恰常出现在 Z 轴上 —— 结果是完全没反应。
+ *    v2 三轴全用。
  *
- *   -> 绕 Y 轴转（像转方向盘） = 左右摆头 -> 指针水平移动
- *   -> 绕 X 轴转（上下点头）   = 抬头低头 -> 指针垂直移动
+ * 2) 直接把机身坐标系的角速度当成屏幕方向，手机一斜握方向就错。
+ *    v2 用旋转矢量把角速度投影到世界坐标系：
+ *      - 绕世界竖直轴的分量（yaw）  -> 水平移动
+ *      - 绕世界水平横轴的分量（pitch）-> 垂直移动
+ *    这样手机怎么拿都能用。
+ *
+ * 3) v1 低速增益过低：0.2 rad/s 只有 0.88 像素/帧，取整后恒为 0。
+ *    v2 把基础增益提到 1.0，灵敏度上限提到 3000，默认 1380。
+ *
+ * 依然是「速率控制」而不是位置积分 —— 手机一停，指针立刻停，永不漂移。
  */
 class AirMouseEngine(context: Context) : SensorEventListener {
 
-    /** 传感器每来一帧就回调一次，单位是「像素增量」，可以是小数。 */
     var onDelta: ((Float, Float) -> Unit)? = null
 
-    /** 总开关。按左右键的瞬间会临时关闭，避免手指压屏幕导致指针乱飞。 */
-    @Volatile
-    var enabled: Boolean = true
+    @Volatile var enabled: Boolean = true
+    @Volatile var invertX: Boolean = false
+    @Volatile var invertY: Boolean = false
 
-    /** 反转水平方向（首次使用时若左右反了，打开这个开关即可） */
-    @Volatile
-    var invertX: Boolean = false
+    /** 1 rad/s 对应多少像素/秒 */
+    @Volatile var sensitivity: Double = 1380.0
 
-    /** 反转垂直方向 */
-    @Volatile
-    var invertY: Boolean = false
+    /** 死区（rad/s），低于此视为手抖 */
+    @Volatile var deadzone: Double = 0.02
 
-    /** 灵敏度：1 rad/s 的角速度对应多少像素/秒 */
-    @Volatile
-    var sensitivity: Double = 600.0
+    /** 增益曲线的参考角速度 */
+    @Volatile var maxRate: Double = 3.0
 
-    /** 死区（rad/s）：低于这个角速度视为手抖，完全忽略 */
-    @Volatile
-    var deadzone: Double = 0.035
-
-    /** 增益曲线的参考上限（rad/s），快速甩动大约在这个量级 */
-    @Volatile
-    var maxRate: Double = 3.0
+    // ---------------- 遥测（供界面诊断面板读取） ----------------
+    @Volatile var telRawX = 0f
+    @Volatile var telRawY = 0f
+    @Volatile var telRawZ = 0f
+    @Volatile var telYaw = 0f
+    @Volatile var telPitch = 0f
+    @Volatile var telDx = 0f
+    @Volatile var telDy = 0f
+    @Volatile var telEvents = 0L
 
     private val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val gyro: Sensor? = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
-    private val filterX = OneEuroFilter(minCutoff = 1.2, beta = 0.02)
-    private val filterY = OneEuroFilter(minCutoff = 1.2, beta = 0.02)
+    /** 游戏旋转矢量优先（无磁力计干扰，更稳） */
+    private val rotVec: Sensor? =
+        sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+            ?: sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
-    // 零偏（陀螺仪静止时的非零读数），随温度漂移，必须动态估计
-    private var biasX = 0.0
-    private var biasY = 0.0
+    val hasGyro: Boolean get() = gyro != null
+    val hasRotation: Boolean get() = rotVec != null
+
+    // 旋转矩阵：R 把「机身坐标」映射到「世界坐标」（Android 世界系 X 东 Y 北 Z 天）
+    private val rotMatrix = FloatArray(9)
+    @Volatile private var hasRotationMatrix = false
+
+    private val filterYaw = OneEuroFilter(minCutoff = 1.0, beta = 0.03)
+    private val filterPitch = OneEuroFilter(minCutoff = 1.0, beta = 0.03)
+
+    // 三轴零偏
+    private val bias = DoubleArray(3)
+    private var biasReady = false
     private var stillSinceNs = 0L
 
     private var lastTsNs = 0L
     private var started = false
 
-    @Volatile
-    private var suppressUntilNs = 0L
-
-    val isAvailable: Boolean get() = gyro != null
+    @Volatile private var suppressUntilNs = 0L
 
     fun start() {
         val g = gyro ?: return
@@ -80,9 +91,10 @@ class AirMouseEngine(context: Context) : SensorEventListener {
         started = true
         lastTsNs = 0L
         suppressUntilNs = 0L
-        filterX.reset()
-        filterY.reset()
+        filterYaw.reset()
+        filterPitch.reset()
         sm.registerListener(this, g, SensorManager.SENSOR_DELAY_GAME, 0)
+        rotVec?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME, 0) }
     }
 
     fun stop() {
@@ -91,7 +103,7 @@ class AirMouseEngine(context: Context) : SensorEventListener {
         sm.unregisterListener(this)
     }
 
-    /** 在接下来的 [ms] 毫秒内忽略运动输入（用于按键瞬间的手指压力干扰） */
+    /** 按键瞬间冻结运动输入，避免手指压屏幕带动机身导致指针乱窜 */
     fun suppress(ms: Long) {
         suppressUntilNs = SystemClock.elapsedRealtimeNanos() + ms * 1_000_000L
     }
@@ -99,7 +111,15 @@ class AirMouseEngine(context: Context) : SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.type != Sensor.TYPE_GYROSCOPE) return
+        when (event.sensor.type) {
+            Sensor.TYPE_GAME_ROTATION_VECTOR, Sensor.TYPE_ROTATION_VECTOR -> {
+                SensorManager.getRotationMatrixFromVector(rotMatrix, event.values)
+                hasRotationMatrix = true
+                return
+            }
+            Sensor.TYPE_GYROSCOPE -> Unit
+            else -> return
+        }
 
         val nowNs = event.timestamp
         if (lastTsNs == 0L) lastTsNs = nowNs
@@ -109,41 +129,90 @@ class AirMouseEngine(context: Context) : SensorEventListener {
 
         var wx = event.values[0].toDouble()
         var wy = event.values[1].toDouble()
+        var wz = event.values[2].toDouble()
 
-        // ---------- 1. 静止零偏自校准 ----------
-        // 手机基本不动时，真值应为 0，读数不为 0 的部分就是零偏。
-        val mag = sqrt(wx * wx + wy * wy)
-        if (mag < 0.05) {
+        telRawX = wx.toFloat()
+        telRawY = wy.toFloat()
+        telRawZ = wz.toFloat()
+        telEvents += 1
+
+        // ---------- 1. 三轴零偏自校准 ----------
+        val mag = sqrt(wx * wx + wy * wy + wz * wz)
+        if (mag < 0.06) {
             if (stillSinceNs == 0L) stillSinceNs = nowNs
             if (nowNs - stillSinceNs > 250_000_000L) {
-                biasX += (wx - biasX) * 0.05
-                biasY += (wy - biasY) * 0.05
+                if (!biasReady) {
+                    bias[0] = wx; bias[1] = wy; bias[2] = wz
+                    biasReady = true
+                } else {
+                    bias[0] += (wx - bias[0]) * 0.05
+                    bias[1] += (wy - bias[1]) * 0.05
+                    bias[2] += (wz - bias[2]) * 0.05
+                }
             }
         } else {
             stillSinceNs = 0L
         }
-        wx -= biasX
-        wy -= biasY
+        if (biasReady) {
+            wx -= bias[0]; wy -= bias[1]; wz -= bias[2]
+        }
 
-        // ---------- 2. 死区 ----------
-        wx = applyDeadzone(wx, deadzone)
-        wy = applyDeadzone(wy, deadzone)
+        // ---------- 2. 投影到世界坐标 ----------
+        val yawRate: Double
+        val pitchRate: Double
+
+        if (hasRotationMatrix) {
+            val m = rotMatrix
+            // world = R * device（R 为行主序机身->世界）
+            val wWorldX = m[0] * wx + m[1] * wy + m[2] * wz   // 东
+            val wWorldY = m[3] * wx + m[4] * wy + m[5] * wz   // 北
+            val wWorldZ = m[6] * wx + m[7] * wy + m[8] * wz   // 天（世界竖直轴）
+
+            // yaw：绕世界竖直轴的旋转 -> 水平移动
+            yawRate = wWorldZ
+
+            // 屏幕法线在世界的分量 = R 的第三列
+            val nx = m[2]
+            val ny = m[5]
+            // pitch 轴 = up × n（up=(0,0,1)），归一化后为水平轴
+            val ax = -ny
+            val ay = nx
+            val an = sqrt(ax * ax + ay * ay)
+            // 手机屏幕接近水平（法线几乎竖直）时该轴退化，此时 pitch 无意义
+            pitchRate = if (an > 0.15) {
+                (wWorldX * (ax / an) + wWorldY * (ay / an))
+            } else {
+                0.0
+            }
+        } else {
+            // 没有旋转矢量时退回机身坐标（兼容老设备）
+            yawRate = wy
+            pitchRate = wx
+        }
+
+        telYaw = yawRate.toFloat()
+        telPitch = pitchRate.toFloat()
+
+        // ---------- 3. 死区 ----------
+        val yawDz = applyDeadzone(yawRate, deadzone)
+        val pitchDz = applyDeadzone(pitchRate, deadzone)
 
         if (!enabled) return
         if (nowNs < suppressUntilNs) return
 
-        // ---------- 3. One Euro 滤波 ----------
+        // ---------- 4. One Euro 滤波 ----------
         val t = nowNs / 1_000_000_000.0
-        val rateX = filterX.filter(wy, t)   // 绕 Y 轴（竖直）-> 水平移动
-        val rateY = filterY.filter(wx, t)   // 绕 X 轴（水平）-> 垂直移动
+        val sYaw = filterYaw.filter(yawDz, t)
+        val sPitch = filterPitch.filter(pitchDz, t)
 
-        // ---------- 4. 非线性增益：慢速精准，快速跨屏 ----------
-        val gx = shapedGain(rateX) * sensitivity * (if (invertX) 1.0 else -1.0)
-        val gy = shapedGain(rateY) * sensitivity * (if (invertY) 1.0 else -1.0)
+        // ---------- 5. 非线性增益 ----------
+        val gx = shapedGain(sYaw) * sensitivity * (if (invertX) 1.0 else -1.0)
+        val gy = shapedGain(sPitch) * sensitivity * (if (invertY) -1.0 else 1.0)
 
-        // ---------- 5. 速度 x dt = 本帧位移 ----------
         val dx = (gx * dt).toFloat()
         val dy = (gy * dt).toFloat()
+        telDx = dx
+        telDy = dy
         if (dx == 0f && dy == 0f) return
 
         onDelta?.invoke(dx, dy)
@@ -154,11 +223,11 @@ class AirMouseEngine(context: Context) : SensorEventListener {
         return if (a < d) 0.0 else v - d * sign(v)
     }
 
-    /** 低速 0.55 倍（点小图标时不飘），高速最多约 3.5 倍（一甩就跨屏） */
+    /** 低速 1.0 倍（能点小图标），高速最高约 4 倍（一甩跨屏） */
     private fun shapedGain(v: Double): Double {
         val a = abs(v)
         if (a < 1e-6) return 0.0
         val r = a / maxRate
-        return v * (0.55 + 3.0 * r * r)
+        return v * (1.0 + 3.0 * r * r)
     }
 }

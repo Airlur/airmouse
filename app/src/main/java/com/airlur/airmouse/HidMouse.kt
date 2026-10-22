@@ -60,6 +60,13 @@ class HidMouse(
     @Volatile private var host: BluetoothDevice? = null
     @Volatile private var registered = false
 
+    /** 已成功发出的 HID 报告数（诊断用） */
+    @Volatile var sentReports: Long = 0L
+        private set
+
+    val isConnected: Boolean get() = host != null && registered
+    val isRegistered: Boolean get() = registered
+
     // 以下状态只在 sendHandler 线程访问
     private var accX = 0f
     private var accY = 0f
@@ -340,6 +347,7 @@ class HidMouse(
         )
         try {
             hd.sendReport(dev, 0, report)
+            sentReports += 1
         } catch (e: SecurityException) {
             Log.w(TAG, "sendReport 权限不足")
         } catch (t: Throwable) {
