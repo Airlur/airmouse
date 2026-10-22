@@ -8,6 +8,13 @@
 - 中间竖条上下拖 → 滚轮
 - 不积分、不漂移：手机一停指针立刻停
 
+## 先在浏览器里看界面（不用装 APK）
+
+打开 [`prototype/index.html`](prototype/index.html) 即可。它是 App 界面的 1:1 静态原型，
+按钮可点、滑块可拖、圆盘有动效，用来在装机之前确认布局与交互是否符合预期。
+
+改界面时的约定：**先改原型，再同步改 `MainActivity.kt`**，两边保持一致。
+
 ---
 
 ## 一、怎么编译出 APK（不需要装 Android Studio）
@@ -118,3 +125,18 @@ BluetoothHidDevice.sendReport(device, 0, byte[4])
 - minSdk 28（Android 9）
 - targetSdk 34
 - AGP 8.5.2 / Kotlin 1.9.24 / Gradle 8.7 / JDK 17
+
+---
+
+## 八、本地验证环境（可选）
+
+如果电脑上有 JDK，可以不依赖 GitHub Actions 先做一次编译前自检：
+
+```
+kotlinc -classpath android.jar -jvm-target 17 -d out app/src/main/java/com/airlur/airmouse/*.kt
+```
+
+> 注意：`HidDescriptors.kt` 里所有 ≥ 0x80 的字面量都必须写 `.toByte()`，
+> 否则报 `The integer literal does not conform to the expected type Byte`
+> （`byteArrayOf` 的形参类型是 `Byte`，Kotlin 不会自动窄化 Int 字面量）。
+

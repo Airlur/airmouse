@@ -26,10 +26,10 @@ object HidDescriptors {
         0x29, 0x05,                      //     Usage Maximum (5)
         0x15, 0x00,                      //     Logical Minimum (0)
         0x25, 0x01,                      //     Logical Maximum (1)
-        0x95, 0x05,                      //     Report Count (5)
+        0x95.toByte(), 0x05,             //     Report Count (5)
         0x75, 0x01,                      //     Report Size (1)
         0x81.toByte(), 0x02,             //     Input (Data,Var,Abs)  -> 5 个按键位
-        0x95, 0x01,                      //     Report Count (1)
+        0x95.toByte(), 0x01,             //     Report Count (1)
         0x75, 0x03,                      //     Report Size (3)
         0x81.toByte(), 0x01,             //     Input (Const,Array,Abs) -> 3 位补齐
 
@@ -40,7 +40,7 @@ object HidDescriptors {
         0x15, 0x81.toByte(),             //     Logical Minimum (-127)
         0x25, 0x7F,                      //     Logical Maximum (127)
         0x75, 0x08,                      //     Report Size (8)
-        0x95, 0x03,                      //     Report Count (3)
+        0x95.toByte(), 0x03,             //     Report Count (3)
         0x81.toByte(), 0x06,             //     Input (Data,Var,Rel)
 
         0xC0.toByte(),                   //   End Collection

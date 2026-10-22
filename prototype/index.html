@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirMouse 原型</title>
+<style>
+  :root{
+    --bg:#10141C;
+    --panel:#1E2633;
+    --pad:#22304A;
+    --pad-active:#3A5480;
+    --strip:#161C27;
+    --text:#E6EDF7;
+    --muted:#9AA7B8;
+    --accent:#4CC2FF;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:#07090D;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:48px;
+    flex-wrap:wrap;
+    padding:32px 24px;
+    font-family:-apple-system,"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    color:var(--text);
+  }
+
+  /* ---------------- 手机外框 ---------------- */
+  .phone{
+    width:393px;
+    height:852px;
+    background:var(--bg);
+    border:10px solid #23272F;
+    border-radius:44px;
+    box-shadow:0 30px 80px rgba(0,0,0,.75), 0 0 0 1px #2E333C inset;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    position:relative;
+    flex:0 0 auto;
+  }
+  .statusbar{
+    height:30px;
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 22px;
+    font-size:12px;
+    color:#8794A6;
+    letter-spacing:.3px;
+  }
+  .notch{
+    position:absolute;
+    top:12px;left:50%;transform:translateX(-50%);
+    width:84px;height:22px;border-radius:14px;background:#05070A;
+  }
+  .navbar{
+    height:20px;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .navbar i{display:block;width:110px;height:4px;border-radius:2px;background:#2A3140}
+
+  /* ---------------- 应用内容（与 MainActivity 一致） ---------------- */
+  .app{
+    flex:1 1 auto;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    padding:12px 16px 8px;
+  }
+
+  .status{
+    font-size:13px;
+    line-height:1.15;
+    color:var(--muted);
+    min-height:34px;
+    transition:color .2s;
+  }
+  .status.ok{color:#63D68B}
+  .status.err{color:#FF7A7A}
+
+  .row{display:flex;gap:8px}
+  .row.gap8{margin-top:8px}
+
+  .btn{
+    flex:1 1 0;
+    appearance:none;
+    border:0;
+    border-radius:8px;
+    background:var(--panel);
+    color:var(--text);
+    font-size:13px;
+    font-family:inherit;
+    padding:11px 6px;
+    cursor:pointer;
+    transition:background .12s,transform .06s;
+  }
+  .btn:active{background:#2A3444;transform:scale(.985)}
+  .btn.on{background:#2F4A78;color:#BFE4FF}
+
+  /* 中间圆盘 */
+  .disc{
+    flex:1 1 auto;
+    min-height:0;
+    position:relative;
+    margin:6px 0 2px;
+    cursor:crosshair;
+    touch-action:none;
+  }
+  .disc canvas{display:block;width:100%;height:100%}
+  .disc-hint{
+    position:absolute;
+    left:50%;bottom:4px;transform:translateX(-50%);
+    font-size:11px;color:#4A5568;white-space:nowrap;pointer-events:none;
+    user-select:none;
+  }
+
+  /* 灵敏度 */
+  .senslabel{
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+  .slider{
+    -webkit-appearance:none;
+    appearance:none;
+    width:100%;
+    height:20px;
+    background:transparent;
+    margin:0 0 10px;
+    cursor:pointer;
+  }
+  .slider::-webkit-slider-runnable-track{
+    height:4px;border-radius:2px;background:#2A3444;
+  }
+  .slider::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:18px;height:18px;border-radius:50%;
+    background:var(--accent);
+    margin-top:-7px;
+    box-shadow:0 0 0 4px rgba(76,194,255,.16);
+  }
+  .slider::-moz-range-track{height:4px;border-radius:2px;background:#2A3444}
+  .slider::-moz-range-thumb{
+    width:18px;height:18px;border:0;border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 0 4px rgba(76,194,255,.16);
+  }
+
+  /* 底部控制区 */
+  .controls{
+    display:flex;
+    gap:10px;
+    margin-top:10px;
+    flex:0 0 auto;
+  }
+  .pad{
+    flex:3 1 0;
+    height:104px;
+    border-radius:10px;
+    background:var(--pad);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:19px;
+    color:var(--text);
+    cursor:pointer;
+    user-select:none;
+    transition:background .1s,transform .05s;
+  }
+  .pad.active{background:var(--pad-active);transform:scale(.98)}
+
+  .wheel{
+    flex:0 0 92px;
+    height:104px;
+    border-radius:10px;
+    background:var(--strip);
+    position:relative;
+    cursor:ns-resize;
+    touch-action:none;
+    overflow:hidden;
+  }
+  .wheel .knob{
+    position:absolute;
+    left:29%;
+    right:29%;
+    top:50%;
+    height:34%;
+    transform:translateY(-50%);
+    border-radius:40px;
+    background:#2E3F5C;
+    opacity:.4;
+    transition:opacity .12s;
+  }
+  .wheel.active .knob{opacity:.85}
+  .wheel .chev{
+    position:absolute;
+    left:50%;
+    width:9px;height:9px;
+    opacity:.75;
+  }
+  .wheel .chev.up{
+    top:14px;
+    border-left:2px solid #6E82A3;
+    border-top:2px solid #6E82A3;
+    transform:translateX(-50%) rotate(45deg);
+  }
+  .wheel .chev.down{
+    bottom:14px;
+    border-left:2px solid #6E82A3;
+    border-bottom:2px solid #6E82A3;
+    transform:translateX(-50%) rotate(-135deg);
+  }
+
+  /* ---------------- 右侧说明 ---------------- */
+  .notes{
+    width:340px;
+    flex:0 0 auto;
+    font-size:13px;
+    line-height:1.85;
+    color:#8D9AB0;
+  }
+  .notes h1{
+    font-size:17px;
+    color:#DCE6F5;
+    margin:0 0 4px;
+    font-weight:600;
+    letter-spacing:.3px;
+  }
+  .notes .sub{
+    font-size:12px;
+    color:#5A6579;
+    margin-bottom:18px;
+  }
+  .notes dl{margin:0}
+  .notes dt{
+    color:#B9C6DA;
+    font-size:12.5px;
+    margin-top:13px;
+    font-weight:600;
+  }
+  .notes dd{
+    margin:2px 0 0;
+    font-size:12.5px;
+    color:#7A879C;
+  }
+  .notes strong{color:#9FB6D0;font-weight:600}
+  .tag{
+    display:block;
+    margin-top:20px;
+    font-size:11px;
+    color:#4C5A70;
+    border-top:1px solid #171D28;
+    padding-top:12px;
+  }
+  @media (max-width:900px){
+    body{gap:28px;padding:16px 12px;align-items:flex-start}
+    .notes{width:100%;max-width:393px;order:2}
+    .phone{order:1}
+  }
+</style>
+</head>
+<body>
+
+  <!-- ================= 手机 ================= -->
+  <div class="phone">
+    <div class="notch"></div>
+
+    <div class="statusbar">
+      <span>20:33</span>
+      <span>5G &nbsp; 88%</span>
+    </div>
+
+    <div class="app">
+
+      <!-- 状态行 -->
+      <div class="status ok" id="status">已注册为蓝牙鼠标 ✓ 现在去平板上配对「AirMouse」</div>
+
+      <!-- 配对按钮 -->
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="btnConnect">连接已配对设备</button>
+        <button class="btn" id="btnDiscover">让平板发现我</button>
+      </div>
+
+      <!-- 中间圆盘 -->
+      <div class="disc" id="disc">
+        <canvas id="cv"></canvas>
+        <div class="disc-hint">转动手腕 · 这里是实时反馈</div>
+      </div>
+
+      <!-- 灵敏度 -->
+      <div class="senslabel" id="sensLabel">灵敏度 595 （慢速精准 ← → 快速跨屏）</div>
+      <input class="slider" id="sens" type="range" min="0" max="100" value="33">
+
+      <!-- 方向修正 -->
+      <div class="row">
+        <button class="btn" id="invX">水平反向</button>
+        <button class="btn" id="invY">垂直反向</button>
+      </div>
+
+      <!-- 左键 / 滚轮 / 右键 -->
+      <div class="controls">
+        <div class="pad" id="padL">左键</div>
+        <div class="wheel" id="wheel">
+          <div class="chev up"></div>
+          <div class="knob"></div>
+          <div class="chev down"></div>
+        </div>
+        <div class="pad" id="padR">右键</div>
+      </div>
+
+    </div>
+
+    <div class="navbar"><i></i></div>
+  </div>
+
+  <!-- ================= 说明 ================= -->
+  <div class="notes">
+    <h1>AirMouse · 交互原型</h1>
+    <div class="sub">1:1 对应 App 实际界面，可直接点击 / 拖动</div>
+
+    <dl>
+      <dt>中间的圆盘</dt>
+      <dd>不是触控板，是<strong>动作反馈</strong>。手机往哪转、转多快，光点就往哪偏、偏多少。它的用处是调灵敏度时能看见自己的动作幅度。</dd>
+
+      <dt>左键 / 右键</dt>
+      <dd>按住左键再转手机 = 拖拽（选文字、拖窗口）。按键时指针会冻结 120ms，避免手指压屏幕带动手机导致点偏。</dd>
+
+      <dt>中间竖条</dt>
+      <dd>滚轮。手指上下拖，按 55px 一格换算。</dd>
+
+      <dt>灵敏度滑块</dt>
+      <dd>150 ~ 1500，默认 595。数值越大，同样手腕转动指针跑得越远。</dd>
+
+      <dt>水平 / 垂直反向</dt>
+      <dd>首次使用如果方向是反的，点一下即可，不用改代码。</dd>
+    </dl>
+
+    <span class="tag">原型 · 与 App 源码保持同步</span>
+  </div>
+
+<script>
+(function(){
+  // ---------- 状态文案 ----------
+  var statusEl = document.getElementById('status');
+  var btnConnect = document.getElementById('btnConnect');
+  var btnDiscover = document.getElementById('btnDiscover');
+
+  var states = [
+    {text:'正在获取 HID Device 服务…', cls:''},
+    {text:'已注册为蓝牙鼠标 ✓ 现在去平板上配对「AirMouse」', cls:'ok'},
+    {text:'已连接：MatePad Pro 10.8 ✓ 可以开始用手机空鼠了', cls:'ok'},
+    {text:'已断开连接', cls:''}
+  ];
+  function setState(i){
+    statusEl.textContent = states[i].text;
+    statusEl.className = 'status ' + states[i].cls;
+  }
+
+  btnConnect.addEventListener('click', function(){
+    setState(0);
+    setTimeout(function(){ setState(2); }, 800);
+  });
+
+  btnDiscover.addEventListener('click', function(){
+    btnDiscover.classList.add('on');
+    btnDiscover.textContent = '正在广播…';
+    setTimeout(function(){
+      btnDiscover.classList.remove('on');
+      btnDiscover.textContent = '让平板发现我';
+    }, 1800);
+  });
+
+  // ---------- 灵敏度 ----------
+  var sens = document.getElementById('sens');
+  var sensLabel = document.getElementById('sensLabel');
+  function applySens(){
+    var s = Math.round(150 + Number(sens.value) * 13.5);
+    sensLabel.textContent = '灵敏度 ' + s + ' （慢速精准 ← → 快速跨屏）';
+  }
+  sens.addEventListener('input', applySens);
+  applySens();
+
+  // ---------- 方向修正 ----------
+  var invX = document.getElementById('invX');
+  var invY = document.getElementById('invY');
+  invX.addEventListener('click', function(){
+    var on = invX.classList.toggle('on');
+    invX.textContent = on ? '水平反向 ✓' : '水平反向';
+  });
+  invY.addEventListener('click', function(){
+    var on = invY.classList.toggle('on');
+    invY.textContent = on ? '垂直反向 ✓' : '垂直反向';
+  });
+
+  // ---------- 左键 / 右键 ----------
+  ['padL','padR'].forEach(function(id){
+    var el = document.getElementById(id);
+    el.addEventListener('pointerdown', function(e){ e.preventDefault(); el.classList.add('active'); });
+    ['pointerup','pointerleave','pointercancel'].forEach(function(ev){
+      el.addEventListener(ev, function(){ el.classList.remove('active'); });
+    });
+  });
+
+  // ---------- 滚轮 ----------
+  var wheel = document.getElementById('wheel');
+  var knob = wheel.querySelector('.knob');
+  var lastY = 0;
+  wheel.addEventListener('pointerdown', function(e){
+    wheel.classList.add('active');
+    lastY = e.clientY;
+    if (wheel.setPointerCapture) { try{ wheel.setPointerCapture(e.pointerId); }catch(err){} }
+  });
+  wheel.addEventListener('pointermove', function(e){
+    if(!wheel.classList.contains('active')) return;
+    var d = lastY - e.clientY;
+    if(d !== 0){
+      lastY = e.clientY;
+      var shift = Math.max(-14, Math.min(14, d * 0.6));
+      knob.style.transform = 'translateY(calc(-50% + ' + shift + 'px))';
+    }
+  });
+  ['pointerup','pointercancel'].forEach(function(ev){
+    wheel.addEventListener(ev, function(){
+      wheel.classList.remove('active');
+      knob.style.transform = 'translateY(-50%)';
+    });
+  });
+
+  // ---------- 圆盘：canvas 绘制 + 惯性衰减 ----------
+  var disc = document.getElementById('disc');
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+
+  var ox = 0, oy = 0, maxOff = 100;
+
+  function resize(){
+    var r = disc.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    cv.width  = Math.max(1, Math.round(r.width  * dpr));
+    cv.height = Math.max(1, Math.round(r.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    maxOff = Math.min(r.width, r.height) * 0.36;
+  }
+  window.addEventListener('resize', resize);
+
+  // 模拟"转动手腕"：鼠标/手指在圆盘上移动，光点跟着偏移
+  disc.addEventListener('pointermove', function(e){
+    var r = disc.getBoundingClientRect();
+    var nx = (e.clientX - r.left) / r.width  - 0.5;
+    var ny = (e.clientY - r.top ) / r.height - 0.5;
+    ox = nx * maxOff * 1.7;
+    oy = ny * maxOff * 1.7;
+  });
+
+  function draw(){
+    var w = cv.width  / (window.devicePixelRatio || 1);
+    var h = cv.height / (window.devicePixelRatio || 1);
+    ctx.clearRect(0, 0, w, h);
+
+    var cx = w/2, cy = h/2;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxOff, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+    ctx.lineWidth = 1;
+    ctx.moveTo(cx - maxOff, cy); ctx.lineTo(cx + maxOff, cy);
+    ctx.moveTo(cx, cy - maxOff); ctx.lineTo(cx, cy + maxOff);
+    ctx.stroke();
+
+    var px = cx + ox, py = cy + oy;
+    ctx.beginPath();
+    ctx.arc(px, py, 26, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(76,194,255,0.20)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(px, py, 14, 0, Math.PI*2);
+    ctx.fillStyle = '#4CC2FF';
+    ctx.fill();
+
+    ox *= 0.94; oy *= 0.94;
+    requestAnimationFrame(draw);
+  }
+
+  resize();
+  draw();
+})();
+</script>
+</body>
+</html>
