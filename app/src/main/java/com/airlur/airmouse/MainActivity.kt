@@ -1307,13 +1307,14 @@ class MainActivity : Activity(), HidMouse.Listener {
         themeRow.addView(themeSelector())
         root.addView(themeRow, fullWrap())
 
-        // 深色模式
+        // 深色模式 + 桌面图标：同一张卡片，中间自动分割线
         root.addView(
             group(
                 null,
                 sheetItem("深色模式", "切换后全部界面同步", sheetSwitch(resolveDark()) { v ->
                     applyTheme(if (v) Settings.THEME_DARK else Settings.THEME_LIGHT)
-                })
+                }),
+                iconSelector()
             )
         )
 
@@ -1421,6 +1422,119 @@ class MainActivity : Activity(), HidMouse.Listener {
         refreshStatus()
     }
 
+    /**
+     * 桌面图标选择器。
+     *
+     * 切换方式：启用目标 alias + 立即禁用其余 + 主动重启。
+     * 重启是必须的 —— 禁用当前入口后 Activity 已经在销毁，
+     * 这时任何 UI 操作都会崩溃。所以点击后除了重启，什么都不做。
+     */
+    private fun iconSelector(): View {
+        val wrap = LinearLayout(this)
+        wrap.orientation = LinearLayout.VERTICAL
+
+        val titleRow = LinearLayout(this)
+        titleRow.orientation = LinearLayout.HORIZONTAL
+        titleRow.gravity = Gravity.CENTER_VERTICAL
+        titleRow.setPadding(dp(14), dp(11), dp(14), dp(4))
+        titleRow.addView(txt("桌面图标", 14.5f, pal.label, false), fullWrap())
+        wrap.addView(titleRow, fullWrap())
+
+        val current = settings.appIcon
+        val size = dp(44)
+
+        wrap.addView(iconRow(intArrayOf(
+            IconManager.ICON_K, IconManager.ICON_G, IconManager.ICON_I
+        ), current, size), fullWrap())
+        wrap.addView(divider(), fullWrap())
+        wrap.addView(iconRow(intArrayOf(
+            IconManager.ICON_K2, IconManager.ICON_G2, IconManager.ICON_I2
+        ), current, size), fullWrap())
+
+        return wrap
+    }
+
+    private fun iconRow(ids: IntArray, current: Int, size: Int): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.setPadding(dp(6), dp(10), dp(6), dp(10))
+
+        for (i in ids) {
+            val selected = (i == current)
+
+            val cell = LinearLayout(this)
+            cell.orientation = LinearLayout.VERTICAL
+            cell.gravity = Gravity.CENTER
+            cell.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+            val img = ImageView(this)
+            img.setImageResource(iconFgRes(i))
+            img.background = iconThumbBg(i, selected)
+            img.layoutParams = LinearLayout.LayoutParams(size, size)
+            cell.addView(img)
+
+            val label = txt(IconManager.shortName(i), 10.5f,
+                if (selected) pal.accent else pal.sec, selected)
+            label.gravity = Gravity.CENTER
+            label.setPadding(0, dp(6), 0, 0)
+            cell.addView(label)
+
+            cell.setOnClickListener {
+                if (settings.appIcon == i) return@setOnClickListener
+                switchIcon(i)
+            }
+            row.addView(cell)
+        }
+        return row
+    }
+
+    /** 缩略图底：用图标自身底色 + 描边，白底图标才不会糊在卡片上 */
+    private fun iconThumbBg(index: Int, selected: Boolean): GradientDrawable {
+        val fill = when (index) {
+            IconManager.ICON_I, IconManager.ICON_I2 -> 0xFF007AFF.toInt()
+            IconManager.ICON_K, IconManager.ICON_K2 -> 0xFF000000.toInt()
+            else -> 0xFFF2F2F7.toInt()
+        }
+        val d = GradientDrawable()
+        d.setColor(fill)
+        d.cornerRadius = dp(11).toFloat()
+        d.setStroke(dp(if (selected) 2 else 1), if (selected) pal.accent else pal.sep)
+        return d
+    }
+
+    /** 只取前景线条，底色由 iconThumbBg 负责 */
+    private fun iconFgRes(index: Int): Int = when (index) {
+        IconManager.ICON_I -> R.drawable.ic_i_fg
+        IconManager.ICON_K -> R.drawable.ic_k_fg
+        IconManager.ICON_G2 -> R.drawable.ic_g2_fg
+        IconManager.ICON_I2 -> R.drawable.ic_i2_fg
+        IconManager.ICON_K2 -> R.drawable.ic_k2_fg
+        else -> R.drawable.ic_g_fg
+    }
+
+    /**
+     * 执行一次图标切换。
+     *
+     * 顺序固定为：记录选择 -> enable 目标 + 立即 disable 其余 -> 以新入口重新启动。
+     *
+     * 两个绝对不能做错的地方：
+     *
+     * 1. 调完 apply() 之后不能再碰 UI。
+     *    禁用当前 alias 会让系统销毁本 Activity，此时再 toast/rebuild 就是崩溃。
+     *
+     * 2. 绝对不能 killProcess。
+     *    重新拉起的新实例与旧实例在**同一个进程**里，杀进程会把新实例一起杀掉，
+     *    表现为「切换后 App 起来就闪退」。用 CLEAR_TASK 清掉旧任务即可，
+     *    旧 Activity 会随旧任务一起被系统回收。
+     */
+    private fun switchIcon(index: Int) {
+        settings.appIcon = index
+        if (!IconManager.apply(this, index)) {
+            toastTop("切换失败，当前桌面可能不支持动态图标")
+            return
+        }
+        IconManager.restartInto(applicationContext, index)
+    }
 
     private fun themeSelector(): View {
         val seg = LinearLayout(this)
