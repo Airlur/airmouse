@@ -11,13 +11,36 @@ android {
         applicationId = "com.airlur.airmouse"
         minSdk = 28
         targetSdk = 34
-        versionCode = 4
-        versionName = "3.1"
+        versionCode = 5
+        versionName = "3.2"
+    }
+
+    /**
+     * 固定签名。
+     *
+     * 默认的 debug 签名用的是 ~/.android/debug.keystore，文件不存在时构建工具会
+     * 自动随机生成一份。CI 每次都是全新虚拟机，于是每次构建签名都不同，
+     * 安卓会以「签名不一致」拒绝覆盖安装，只能先卸载。
+     *
+     * 所以这里把 keystore 固化进仓库，保证每次构建签名一致。
+     * 用的是标准 debug 密钥（androiddebugkey / 密码 android），属于公开信息，
+     * 与每台开发机自动生成的那份等价，放进公开仓库没有额外风险。
+     */
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/debug.jks")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
