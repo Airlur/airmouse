@@ -36,7 +36,23 @@
   （`R` 类需用工具链目录下的 stub，不能放进仓库）
 - 原型渲染：
   `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe --headless=new --screenshot`
-  测量时 CSS 必须加 `*,*::before,*::after{transition:none!important;animation:none!important}`
+  测量时 CSS 必须加 `*,*::before,*,::after{transition:none!important;animation:none!important}`
+
+## 三之二、禁止在未验证的系统机制上冒险（血泪教训）
+
+**不要在没查清副作用的情况下，使用会改变「应用自身身份」的系统 API。**
+
+已经踩过的坑：
+
+| 尝试 | 后果 |
+|---|---|
+| `activity-alias` 动态换桌面图标（v3.3/v3.4） | 华为桌面上图标重复出现、切换后消失，**全部 alias 被禁用后应用彻底没有入口，连重装都找不到图标** |
+
+规则：
+1. 涉及 `PackageManager.setComponentEnabledSetting`、`activity-alias`、
+   多入口组件、修改自身 manifest 组件的功能，**默认不做**。
+2. 如果确实要做，必须先说明风险和回退方案，由用户决定是否承担。
+3. 一旦这类改动导致"应用不可用"，**立刻整体回退**，不要在坏掉的方案上继续打补丁。
 
 ## 四、版本号
 
