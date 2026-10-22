@@ -11,8 +11,8 @@ android {
         applicationId = "com.airlur.airmouse"
         minSdk = 28
         targetSdk = 34
-        versionCode = 5
-        versionName = "3.2"
+        versionCode = 6
+        versionName = "3.3"
     }
 
     /**
@@ -38,6 +38,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 与 debug 用同一把密钥，保证升级覆盖时签名一致；
+            // 这样发布出去的是正式构建（非 debuggable），而不是 debug 包。
+            signingConfig = signingConfigs.getByName("debug")
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")

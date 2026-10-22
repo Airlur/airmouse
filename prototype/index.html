@@ -305,6 +305,29 @@
   .iconThumb.bgLight{background:#F2F2F7}
   .iconThumb.bgInk{background:#000}
   .iconThumb.bgBlue{background:#007AFF}
+  /* ================= 运行日志页 ================= */
+  .dbgPage{display:none; position:absolute; inset:0; z-index:40; background:var(--bg);
+    flex-direction:column; padding:14px 16px 16px}
+  #dbg:checked ~ .dbgPage{display:flex}
+  .dbgHead{display:flex; align-items:center; justify-content:space-between; margin-bottom:4px}
+  .dbgHead b{font-size:20px; color:var(--label); font-weight:700}
+  .dbgHead span{font-size:13px; color:var(--accent); cursor:pointer; padding:6px 4px}
+  .dbgHint{font-size:11px; color:var(--sec); margin-bottom:8px}
+  .dbgBody{flex:1; overflow:auto; margin:0; padding:10px; border-radius:10px;
+    background:var(--card); color:var(--label); font-size:9.5px; line-height:1.45;
+    font-family:ui-monospace,Consolas,"Courier New",monospace; white-space:pre-wrap; word-break:break-all}
+  .dbgBtns{display:flex; gap:10px; margin-top:10px}
+  .dbgBtn{flex:1; border:0; border-radius:12px; padding:12px 0; font-size:14px; font-weight:600;
+    background:var(--fillBtn); color:var(--label); cursor:pointer}
+  .dbgBtn.primary{background:var(--accent); color:#fff}
+  .chip{display:inline-flex; align-items:center; gap:5px; font-size:13px; font-weight:600;
+    padding:5px 10px; border-radius:9px; background:var(--grp)}
+  .chip i{width:7px;height:7px;border-radius:50%;background:currentColor;display:block}
+  .chip.x-idle{color:var(--accent)}
+  .chip.x-idle i{background:var(--sec)}
+  .chip.x-connecting{color:var(--orange)}
+  .chip.x-ok{color:var(--green)}
+  .chip.x-fail{color:#FF3B30}
 </style>
 </head>
 <body>
@@ -391,14 +414,17 @@
   <div class="island"></div>
   <div class="statusbar"><span>22:50</span><span>5G&nbsp;&nbsp;88%</span></div>
 
-  <div class="screen">
-    <input type="radio" name="mode" id="mAir" class="sr" checked>
-    <input type="radio" name="mode" id="mPad" class="sr">
+    <input type="checkbox" id="dbg" class="sr">
+
+<div class="screen">
+    <input type="radio" name="mode" id="mAir" class="sr">
+    <input type="radio" name="mode" id="mPad" class="sr" checked>
     <input type="checkbox" id="invX" class="sr">
     <input type="checkbox" id="invY" class="sr">
     <input type="checkbox" id="help" class="sr">
     <input type="checkbox" id="conn" class="sr">
     <input type="checkbox" id="set" class="sr">
+    <input type="checkbox" id="dbg" class="sr">
 
     <div class="head">
       <h1>AirMouse</h1>
@@ -407,11 +433,12 @@
         <svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.63l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.65 8.85a.5.5 0 0 0 .12.63l2.03 1.58c-.03.31-.05.63-.05.94s.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.63l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.63l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
       </label>
       <label class="iconBtn" for="help" title="说明">?</label>
+      <label class="iconBtn" for="dbg" title="运行日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><ellipse cx="12" cy="13" rx="3.6" ry="5"/><circle cx="12" cy="6.6" r="1.9"/><path d="M10.7 5.4 9.4 3.9M13.3 5.4l1.3-1.5"/><path d="M8.4 10h-.1M8.4 13h-.1M8.4 16h-.1"/><path d="M15.6 10h.1M15.6 13h.1M15.6 16h.1"/><path d="M8.5 10 5.6 9.5M8.5 13H5.4M8.5 16l-2.9.5"/><path d="M15.5 10l2.9-.5M15.5 13h3.1M15.5 16l2.9.5"/></svg></label>
     </div>
 
     <div class="seg">
-      <label for="mAir">空鼠</label>
       <label for="mPad">触控板</label>
+      <label for="mAir">空鼠</label>
     </div>
 
     <!-- ================= 空鼠 ================= -->
@@ -514,12 +541,11 @@
         <h4>连接平板</h4>
         <div class="sub2" id="connState">已注册为蓝牙鼠标，等待平板连接</div>
         <div class="big2" id="btnDiscover">让平板发现我（5 分钟）</div>
-        <div class="tip">点这个之后，在平板上打开 设置 → 蓝牙 → 搜索新设备 → 选 AirMouse → 配对。只需一次，以后自动连。</div>
         <div class="grp">
-          <div class="item" id="devMate"><div>MatePad Pro 10.8<small>已配对 · 3C:8B:…</small></div><span class="tail">连接</span></div>
+          <div class="item" id="devMate"><div>MatePad Pro 10.8<small>已配对 · 3C:8B:…</small></div><span class="chip x-idle" id="chipMate"><i></i>连接</span></div>
           <div class="item" id="devOther"><div>其他已配对设备…<small>点击自动连接</small></div><span class="tail">›</span></div>
         </div>
-        <div class="big2 gray" id="btnDisconnect">断开当前连接</div>
+        <div class="big2 gray" id="btnDisconnect">当前未连接</div>
         <label class="sheetClose" for="conn">关闭</label>
       </div>
     </div>
@@ -600,6 +626,20 @@
     <div class="jswarn" id="jsWarn">脚本未运行 · 主题/开关/数值需 JS</div>
     <div class="toast" id="toast"></div>
   </div>
+
+    <!-- ================= 运行日志页 ================= -->
+    <div class="dbgPage" id="dbgPage">
+      <div class="dbgHead">
+        <b>运行日志</b>
+        <span id="dbgClose">关闭</span>
+      </div>
+      <div class="dbgHint">出错时点「复制全部」把内容发给我</div>
+      <pre class="dbgBody" id="dbgBody"></pre>
+      <div class="dbgBtns">
+        <button class="dbgBtn primary" id="dbgCopy">复制全部</button>
+        <button class="dbgBtn" id="dbgClear">清空</button>
+      </div>
+    </div>
 </div>
 
 <!-- ================= 说明 ================= -->
@@ -1004,6 +1044,55 @@
   bindPicker('.logoCell', 'sel');
   bindPicker('.iconCell', 'sel');
 
+  /* ---------- 运行日志页 ---------- */
+  var dbgLines = [
+    '14:02:11.204  [PERM]  BLUETOOTH_CONNECT = 允许',
+    '14:02:11.205  [PERM]  BLUETOOTH_SCAN = 允许',
+    '14:02:11.205  [PERM]  BLUETOOTH_ADVERTISE = 允许',
+    '14:02:11.206  [PERM]  权限齐全，开始注册',
+    '14:02:11.238  [HID]  start: 蓝牙已开启=true',
+    '14:02:11.241  [HID]  getProfileProxy(HID_DEVICE) 返回 true',
+    '14:02:11.402  [HID]  onServiceConnected: profile=19 proxy=true type=BluetoothHidDevice',
+    '14:02:11.403  [HID]  registerNow: sdpName=AirMouse',
+    '14:02:11.418  [HID]    registerApp() 返回 true',
+    '14:02:11.521  [HID]  onAppStatusChanged: registered=true plugged=null',
+    '14:02:31.902  [HID]  bondedDevices: 2 个',
+    '14:02:31.903  [HID]    - MatePad 3C:8B:xx  bondState=12',
+    '14:02:35.117  [HID]  点击连接: name=MatePad addr=3C:8B:xx',
+    '14:02:35.118  [HID]    当前状态: proxy=true registered=true',
+    '14:02:35.120  [HID]    connect() 返回 true',
+    '14:02:36.640  [HID]  onConnectionStateChanged: CONNECTED dev=MatePad',
+    '— 以上为示例，真机日志由实际运行产生 —'
+  ];
+  var dbgBody = document.getElementById('dbgBody');
+  if(dbgBody){
+    dbgBody.textContent = dbgLines.join('\n');
+  }
+  var dbgCopy = document.getElementById('dbgCopy');
+  if(dbgCopy){
+    dbgCopy.addEventListener('click', function(){
+      var txt = dbgBody ? dbgBody.textContent : '';
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(function(){ toast('日志已复制'); },
+          function(){ toast('复制失败，请手动长按选择'); });
+      } else { toast('此环境不支持自动复制'); }
+    });
+  }
+  var dbgClear = document.getElementById('dbgClear');
+  if(dbgClear){
+    dbgClear.addEventListener('click', function(){
+      dbgLines = ['(暂无日志)'];
+      if(dbgBody) dbgBody.textContent = '(暂无日志)';
+      toast('日志已清空');
+    });
+  }
+  var dbgClose = document.getElementById('dbgClose');
+  if(dbgClose){
+    dbgClose.addEventListener('click', function(){
+      document.getElementById('dbg').checked = false;
+    });
+  }
+
   /* ---------- 连接模拟 ---------- */
   var pill = document.getElementById('pill'), pillTxt = document.getElementById('pillTxt');
   var connState = document.getElementById('connState'), connBox = document.getElementById('conn');
@@ -1016,15 +1105,37 @@
     setState('wait','可被发现','已开启可被发现（5 分钟），请在平板上搜索 AirMouse');
     toast('已开启可被发现');
   });
+var chipMate = document.getElementById('chipMate');
+  var btnDisconnect = document.getElementById('btnDisconnect');
+  function setChip(cls, txt){
+    if(!chipMate) return;
+    chipMate.className = 'chip ' + cls;
+    chipMate.innerHTML = '<i></i>' + txt;
+  }
   document.getElementById('devMate').addEventListener('click', function(){
-    setState('ok','已连接','已连接到 MatePad Pro 10.8');
-    toast('已连接');
-    connBox.checked = false;
+    // 演示三态：连接中 -> 已连接
+    setChip('x-connecting','连接中…');
+    setState('wait','待连接','正在连接…');
+    toast('正在连接「MatePad Pro 10.8」…');
+    setTimeout(function(){
+      setChip('x-ok','已连接');
+      setState('ok','已连接','已连接：MatePad Pro 10.8');
+      if(btnDisconnect) btnDisconnect.textContent = '断开「MatePad Pro 10.8」';
+      connBox.checked = false;
+    }, 1200);
   });
-  document.getElementById('btnDisconnect').addEventListener('click', function(){
-    setState('wait','待配对','已断开，等待平板重新连接');
-    toast('已断开');
-  });
+  if(btnDisconnect){
+    btnDisconnect.addEventListener('click', function(){
+      if(btnDisconnect.textContent.indexOf('断开') !== 0){
+        toast('当前没有已连接的设备');
+        return;
+      }
+      setChip('x-idle','连接');
+      setState('wait','待配对','已断开，等待平板重新连接');
+      btnDisconnect.textContent = '当前未连接';
+      toast('已断开');
+    });
+  }
 })();
 </script>
 </body>

@@ -20,6 +20,7 @@ class IconButton(context: Context, private val kind: Int) : View(context) {
     companion object {
         const val KIND_SLIDERS = 0
         const val KIND_HELP = 1
+        const val KIND_BUG = 2
     }
 
     var circleColor: Int = 0xFFE5E5EA.toInt()
@@ -78,6 +79,11 @@ class IconButton(context: Context, private val kind: Int) : View(context) {
             return
         }
 
+        if (kind == KIND_BUG) {
+            drawBug(canvas, cx, cy, r)
+            return
+        }
+
         // 三条滑杆，长短与滑块位置错开，视觉上更像设置图标
         val half = r * 0.52f
         val gap = r * 0.44f
@@ -94,5 +100,51 @@ class IconButton(context: Context, private val kind: Int) : View(context) {
             canvas.drawCircle(knobPos[i], y, knobR, fgPaint)
             fgPaint.style = Paint.Style.STROKE
         }
+    }
+
+    /**
+     * 虫子图标（调试用，类似 IDE 里的 debug 断点图标）
+     * 由「椭圆身体 + 头部 + 六条腿 + 两根触角」组成
+     */
+    private fun drawBug(canvas: Canvas, cx: Float, cy: Float, r: Float) {
+        val bodyR = r * 0.20f
+        val bodyTop = cy - r * 0.34f
+        val bodyBottom = cy + r * 0.44f
+        val headR = r * 0.155f
+        val headY = cy - r * 0.52f
+
+        // 身体（椭圆）
+        fgPaint.style = Paint.Style.STROKE
+        fgPaint.strokeWidth = dp(2).toFloat() * 0.75f
+        canvas.drawOval(
+            cx - bodyR, bodyTop,
+            cx + bodyR, bodyBottom,
+            fgPaint
+        )
+
+        // 头
+        canvas.drawCircle(cx, headY, headR, fgPaint)
+
+        // 触角
+        canvas.drawLine(cx - headR * 0.6f, headY - headR * 0.7f,
+            cx - headR * 1.7f, headY - headR * 2.1f, fgPaint)
+        canvas.drawLine(cx + headR * 0.6f, headY - headR * 0.7f,
+            cx + headR * 1.7f, headY - headR * 2.1f, fgPaint)
+
+        // 六条腿，左右各三
+        val legYs = floatArrayOf(
+            bodyTop + (bodyBottom - bodyTop) * 0.22f,
+            bodyTop + (bodyBottom - bodyTop) * 0.50f,
+            bodyTop + (bodyBottom - bodyTop) * 0.78f
+        )
+        val spread = bodyR * 2.05f
+        for (y in legYs) {
+            canvas.drawLine(cx - bodyR * 0.85f, y, cx - spread, y - r * 0.06f, fgPaint)
+            canvas.drawLine(cx + bodyR * 0.85f, y, cx + spread, y - r * 0.06f, fgPaint)
+        }
+
+        // 身体中缝，让它更像虫子
+        canvas.drawLine(cx, bodyTop + (bodyBottom - bodyTop) * 0.15f,
+            cx, bodyBottom - (bodyBottom - bodyTop) * 0.12f, fgPaint)
     }
 }
