@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 四个图标方案的配色。浅底用 #007AFF，深底用 #0A84FF（iOS 深色模式标准做法） -->
+<resources>
+    <color name="icon_g_bg">#F2F2F7</color>
+    <color name="icon_i_bg">#007AFF</color>
+    <color name="icon_k_bg">#000000</color>
+    <color name="icon_n_bg">#000000</color>
+</resources>

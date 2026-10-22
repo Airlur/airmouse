@@ -3,6 +3,8 @@ package com.airlur.airmouse
 import android.Manifest
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -15,16 +17,17 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
-import android.widget.Toast
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -35,6 +38,11 @@ class MainActivity : Activity(), HidMouse.Listener {
         private const val REQ_DISCOVERABLE = 200
         private const val MODE_AIR = 0
         private const val MODE_PAD = 1
+
+        private const val SHEET_NONE = 0
+        private const val SHEET_HELP = 1
+        private const val SHEET_CONNECT = 2
+        private const val SHEET_SETTINGS = 3
     }
 
     private lateinit var settings: Settings
@@ -42,7 +50,10 @@ class MainActivity : Activity(), HidMouse.Listener {
     private lateinit var engine: AirMouseEngine
     private lateinit var hid: HidMouse
     private lateinit var touchpad: TouchpadView
+
+    private lateinit var rootView: FrameLayout
     private lateinit var sheetHost: SheetHost
+    private var toastView: TextView? = null
 
     private lateinit var pill: TextView
     private lateinit var segAir: TextView
@@ -54,19 +65,35 @@ class MainActivity : Activity(), HidMouse.Listener {
     private lateinit var padHint: TextView
     private lateinit var sensLabel: TextView
     private lateinit var padSensLabel: TextView
-    private lateinit var invXToggle: ToggleSwitch
-    private lateinit var invYToggle: ToggleSwitch
+
+    // 连接面板的实时引用（面板不重建也能刷新）
+    private var connStateText: TextView? = null
+    private var connDiscoverBtn: TextView? = null
+    private var connDeviceStatus: MutableList<Triple<String, View, TextView>> = mutableListOf()
 
     private var mode = MODE_AIR
     private var leftDown = false
     private var rightDown = false
     private var lastStatus = ""
+    private var openSheet = SHEET_NONE
+
+    private var discoverUntil = 0L
 
     private val ui = Handler(Looper.getMainLooper())
+
     private val tick = object : Runnable {
         override fun run() {
             refreshStatus()
             ui.postDelayed(this, 200L)
+        }
+    }
+
+    private val discoverTick = object : Runnable {
+        override fun run() {
+            refreshConnectSheet()
+            if (discoverUntil > SystemClock.elapsedRealtime()) {
+                ui.postDelayed(this, 1000L)
+            }
         }
     }
 
@@ -79,8 +106,9 @@ class MainActivity : Activity(), HidMouse.Listener {
         engine = AirMouseEngine(this)
         hid = HidMouse(this, this)
 
-        buildUi()
+        rebuildUi(SHEET_NONE)
         applySettings()
+        ensureIcon()
 
         engine.onDelta = { dx, dy ->
             hid.moveBy(dx, dy)
@@ -88,6 +116,19 @@ class MainActivity : Activity(), HidMouse.Listener {
         }
 
         requestBluetoothPermissions()
+    }
+
+    /**
+     * 确保桌面图标与设置一致。
+     *
+     * 只在真的不一致时才写，避免每次启动都动一遍组件状态
+     * （频繁调用会让部分启动器把图标重新排列）。
+     */
+    private fun ensureIcon() {
+        val want = settings.appIcon
+        if (IconManager.currentIndex(this) != want) {
+            IconManager.apply(this, want)
+        }
     }
 
     private fun resolveDark(): Boolean {
@@ -105,6 +146,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         super.onResume()
         applySettings()
         engine.start()
+        hid.resumeAutoReconnect()
         ui.removeCallbacks(tick)
         ui.post(tick)
         setMode(mode)
@@ -120,6 +162,7 @@ class MainActivity : Activity(), HidMouse.Listener {
     override fun onDestroy() {
         super.onDestroy()
         ui.removeCallbacks(tick)
+        ui.removeCallbacks(discoverTick)
         hid.stop()
     }
 
@@ -170,9 +213,15 @@ class MainActivity : Activity(), HidMouse.Listener {
             ViewGroup.LayoutParams.WRAP_CONTENT
         )
 
-    // ================================================================ 主界面
+    // ================================================================ 界面构建
 
-    private fun buildUi() {
+    /**
+     * 重建整个界面。
+     *
+     * 刻意不用 recreate()：那会销毁 Activity，进而 unregisterApp() 掉 HID 注册，
+     * 蓝牙鼠标直接断线。所以只重建 View 树，hid / engine 保持存活。
+     */
+    private fun rebuildUi(reopenSheet: Int) {
         val root = FrameLayout(this)
         root.setBackgroundColor(pal.bg)
 
@@ -199,6 +248,21 @@ class MainActivity : Activity(), HidMouse.Listener {
             )
         )
 
+        // 顶部提示条
+        val tv = toastView ?: txt("", 13f, 0xFFFFFFFF.toInt(), false).also { toastView = it }
+        tv.setBackgroundColor(0xE6000000.toInt())
+        tv.setPadding(dp(16), dp(10), dp(16), dp(10))
+        tv.gravity = Gravity.CENTER_HORIZONTAL
+        tv.visibility = View.GONE
+        val tvLp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        )
+        tvLp.topMargin = dp(56)
+        tv.maxWidth = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+        root.addView(tv, tvLp)
+
         sheetHost = SheetHost(this)
         root.addView(
             sheetHost,
@@ -208,8 +272,16 @@ class MainActivity : Activity(), HidMouse.Listener {
             )
         )
 
+        rootView = root
         setContentView(root)
-        setMode(MODE_AIR)
+        setMode(mode)
+
+        openSheet = SHEET_NONE
+        when (reopenSheet) {
+            SHEET_HELP -> showHelpSheet()
+            SHEET_CONNECT -> showConnectSheet()
+            SHEET_SETTINGS -> showSettingsSheet()
+        }
     }
 
     private fun buildHeader(): View {
@@ -217,8 +289,10 @@ class MainActivity : Activity(), HidMouse.Listener {
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
 
-        val title = txt("AirMouse", 26f, pal.label, true)
-        row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(
+            txt("AirMouse", 26f, pal.label, true),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
 
         pill = txt("未注册", 11f, pal.sec, true)
         pill.setPadding(dp(9), dp(5), dp(9), dp(5))
@@ -242,7 +316,7 @@ class MainActivity : Activity(), HidMouse.Listener {
 
         val wrap = LinearLayout(this)
         wrap.orientation = LinearLayout.VERTICAL
-        wrap.addView(row)
+        wrap.addView(row, fullWrap())
         wrap.setPadding(0, dp(2), 0, dp(8))
         return wrap
     }
@@ -285,10 +359,12 @@ class MainActivity : Activity(), HidMouse.Listener {
         mode = m
         val air = m == MODE_AIR
         engine.enabled = air
-        paneAir.visibility = if (air) View.VISIBLE else View.GONE
-        panePad.visibility = if (air) View.GONE else View.VISIBLE
-        segAir.background = if (air) rounded(pal.card, 7) else null
-        segPad.background = if (air) null else rounded(pal.card, 7)
+        if (::paneAir.isInitialized) {
+            paneAir.visibility = if (air) View.VISIBLE else View.GONE
+            panePad.visibility = if (air) View.GONE else View.VISIBLE
+            segAir.background = if (air) rounded(pal.card, 7) else null
+            segPad.background = if (air) null else rounded(pal.card, 7)
+        }
     }
 
     // ---------------------------------------------------------------- 空鼠页
@@ -309,7 +385,6 @@ class MainActivity : Activity(), HidMouse.Listener {
         hintWrap.setPadding(0, 0, 0, dp(4))
         pane.addView(hintWrap, fullWrap())
 
-        // 灵敏度
         val card = LinearLayout(this)
         card.orientation = LinearLayout.VERTICAL
         card.background = rounded(pal.card, 12)
@@ -335,21 +410,11 @@ class MainActivity : Activity(), HidMouse.Listener {
         card.addView(seek, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
         sensLabel.text = settings.airSensitivity().toInt().toString()
 
-        pane.addView(
-            card,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        pane.addView(card, fullWrap())
         pane.addView(spacer(dp(9)))
-
-        // 反向开关（同一行两个）
-        pane.addView(buildInvertRow())
+        pane.addView(buildInvertRow(), fullWrap())
         pane.addView(spacer(dp(9)))
-
-        // 按键区
-        pane.addView(buildDeck(true))
+        pane.addView(buildDeck(true), fullWrap())
 
         val legend = txt("中间滚轮：上下滑 = 滚动　·　轻点 = 中键", 10.5f, pal.sub, false)
         legend.gravity = Gravity.CENTER
@@ -368,21 +433,17 @@ class MainActivity : Activity(), HidMouse.Listener {
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.background = rounded(pal.card, 12)
-        row.layoutParams = fullWrap()
 
         val left = invertCell("水平反向", settings.invertX) { v ->
             settings.invertX = v
             engine.invertX = v
         }
-        invXToggle = left.second
-
         val right = invertCell("垂直反向", settings.invertY) { v ->
             settings.invertY = v
             engine.invertY = v
         }
-        invYToggle = right.second
 
-        row.addView(left.first, LinearLayout.LayoutParams(0, dp(48), 1f))
+        row.addView(left, LinearLayout.LayoutParams(0, dp(48), 1f))
 
         val div = View(this)
         div.setBackgroundColor(pal.sep)
@@ -390,7 +451,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         divLp.gravity = Gravity.CENTER_VERTICAL
         row.addView(div, divLp)
 
-        row.addView(right.first, LinearLayout.LayoutParams(0, dp(48), 1f))
+        row.addView(right, LinearLayout.LayoutParams(0, dp(48), 1f))
         return row
     }
 
@@ -398,15 +459,17 @@ class MainActivity : Activity(), HidMouse.Listener {
         label: String,
         initial: Boolean,
         onChange: (Boolean) -> Unit
-    ): Pair<LinearLayout, ToggleSwitch> {
+    ): LinearLayout {
         val cell = LinearLayout(this)
         cell.orientation = LinearLayout.HORIZONTAL
         cell.gravity = Gravity.CENTER_VERTICAL
         cell.setPadding(dp(14), 0, dp(14), 0)
         cell.isClickable = true
 
-        val t = txt(label, 14f, pal.label, false)
-        cell.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        cell.addView(
+            txt(label, 14f, pal.label, false),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
 
         val sw = ToggleSwitch(this)
         sw.big = false
@@ -422,7 +485,7 @@ class MainActivity : Activity(), HidMouse.Listener {
             sw.setChecked(state, true)
             onChange(state)
         }
-        return Pair(cell, sw)
+        return cell
     }
 
     // -------------------------------------------------------------- 触控板页
@@ -462,14 +525,14 @@ class MainActivity : Activity(), HidMouse.Listener {
         )
 
         frame.addView(padHintView("双指滑动 = 滚轮", Gravity.TOP or Gravity.CENTER_HORIZONTAL))
-        frame.addView(padHintView("单指滑动 = 移动指针", Gravity.CENTER))
+        padHint = padHintView("单指滑动 = 移动指针", Gravity.CENTER)
+        frame.addView(padHint)
         frame.addView(padHintView("轻点 = 左键 · 连点两下按住 = 拖拽", Gravity.BOTTOM or Gravity.START))
         frame.addView(padHintView("长按 = 右键", Gravity.BOTTOM or Gravity.END))
 
         pane.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         pane.addView(spacer(dp(10)))
 
-        // 指针速度
         val card = LinearLayout(this)
         card.orientation = LinearLayout.VERTICAL
         card.background = rounded(pal.card, 12)
@@ -495,15 +558,9 @@ class MainActivity : Activity(), HidMouse.Listener {
         card.addView(seek, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
         padSensLabel.text = String.format(java.util.Locale.US, "%.1f×", settings.padGain())
 
-        pane.addView(
-            card,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        pane.addView(card, fullWrap())
         pane.addView(spacer(dp(10)))
-        pane.addView(buildDeck(false))
+        pane.addView(buildDeck(false), fullWrap())
 
         val legend = txt("左键锁定后，单指滑动面板即可框选", 10.5f, pal.sub, false)
         legend.gravity = Gravity.CENTER
@@ -512,9 +569,8 @@ class MainActivity : Activity(), HidMouse.Listener {
         return pane
     }
 
-    private fun padHintView(text: String, gravity: Int): View {
+    private fun padHintView(text: String, gravity: Int): TextView {
         val t = txt(text, 11f, pal.sub, false)
-        if (text.startsWith("单指")) padHint = t
         val lp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -542,7 +598,6 @@ class MainActivity : Activity(), HidMouse.Listener {
         deck.orientation = LinearLayout.HORIZONTAL
         deck.background = rounded(pal.deck, 16)
         deck.setPadding(dp(9), dp(9), dp(9), dp(9))
-        deck.layoutParams = fullWrap()
 
         val left = keyView("左键")
         bindKey(left, HidMouse.BTN_LEFT, true)
@@ -556,8 +611,7 @@ class MainActivity : Activity(), HidMouse.Listener {
             deck.addView(wheel, lp)
         } else {
             val gap = View(this)
-            val lp = LinearLayout.LayoutParams(dp(9), 1)
-            deck.addView(gap, lp)
+            deck.addView(gap, LinearLayout.LayoutParams(dp(9), 1))
         }
 
         val right = keyView("右键")
@@ -597,6 +651,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         }
 
         box.setOnTouchListener { _, event ->
+            val label = if (isLeft) "左键" else "右键"
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     engine.suppress(120)
@@ -605,7 +660,7 @@ class MainActivity : Activity(), HidMouse.Listener {
                         paint(false)
                         hid.setButton(mask, false)
                         if (isLeft) leftDown = false else rightDown = false
-                        toast(if (isLeft) "左键 已释放" else "右键 已释放")
+                        toastTop("$label 已释放")
                         return@setOnTouchListener true
                     }
                     hid.setButton(mask, true)
@@ -616,7 +671,7 @@ class MainActivity : Activity(), HidMouse.Listener {
                         val r = Runnable {
                             latched = true
                             engine.suppress(200)
-                            toast(if (isLeft) "左键 已锁定 · 滑动即可拖拽" else "右键 已锁定")
+                            toastTop("$label 已锁定 · 滑动即可拖拽")
                         }
                         timer = r
                         box.postDelayed(r, settings.latchMs.toLong())
@@ -625,8 +680,7 @@ class MainActivity : Activity(), HidMouse.Listener {
                 }
 
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val t = timer
-                    if (t != null) box.removeCallbacks(t)
+                    timer?.let { box.removeCallbacks(it) }
                     timer = null
                     if (!latched) {
                         hid.setButton(mask, false)
@@ -648,8 +702,7 @@ class MainActivity : Activity(), HidMouse.Listener {
 
         val knob = View(this)
         knob.background = rounded(pal.track, 40)
-        val knobLp = FrameLayout.LayoutParams(dp(30), dp(34), Gravity.CENTER)
-        box.addView(knob, knobLp)
+        box.addView(knob, FrameLayout.LayoutParams(dp(30), dp(34), Gravity.CENTER))
 
         var lastY = 0f
         var acc = 0f
@@ -672,11 +725,10 @@ class MainActivity : Activity(), HidMouse.Listener {
                     lastY = event.y
                     if (abs(dy) > 1f) moved = true
                     acc += dy
-                    var notches = (acc / step).toInt()
+                    val notches = (acc / step).toInt()
                     if (notches != 0) {
                         acc -= notches * step
-                        if (settings.wheelInvert) notches = -notches
-                        hid.wheel(-notches)
+                        hid.wheel(notches)
                     }
                     true
                 }
@@ -686,7 +738,7 @@ class MainActivity : Activity(), HidMouse.Listener {
                     knob.background = rounded(pal.track, 40)
                     if (!moved && settings.midClick) {
                         hid.click(HidMouse.BTN_MIDDLE, 30L)
-                        toast("中键")
+                        toastTop("中键")
                     }
                     true
                 }
@@ -707,12 +759,8 @@ class MainActivity : Activity(), HidMouse.Listener {
         sb.thumbTintList = ColorStateList.valueOf(pal.accent)
         sb.progressBackgroundTintList = ColorStateList.valueOf(pal.track)
         sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(bar: SeekBar?, p: Int, fromUser: Boolean) {
-                onChange(p)
-            }
-
+            override fun onProgressChanged(bar: SeekBar?, p: Int, fromUser: Boolean) = onChange(p)
             override fun onStartTrackingTouch(bar: SeekBar?) = Unit
-
             override fun onStopTrackingTouch(bar: SeekBar?) = Unit
         })
         return sb
@@ -729,7 +777,6 @@ class MainActivity : Activity(), HidMouse.Listener {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.VERTICAL
         box.setPadding(dp(14), dp(6), dp(14), dp(8))
-        box.layoutParams = fullWrap()
 
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
@@ -739,7 +786,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         )
         val valueText = txt(fmt(value), 13f, pal.sec, false)
         row.addView(valueText)
-        box.addView(row)
+        box.addView(row, fullWrap())
 
         val sb = SeekBar(this)
         sb.max = max - min
@@ -755,7 +802,6 @@ class MainActivity : Activity(), HidMouse.Listener {
             }
 
             override fun onStartTrackingTouch(bar: SeekBar?) = Unit
-
             override fun onStopTrackingTouch(bar: SeekBar?) = Unit
         })
         box.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
@@ -778,7 +824,7 @@ class MainActivity : Activity(), HidMouse.Listener {
     private fun group(title: String?, vararg children: View): View {
         val wrap = LinearLayout(this)
         wrap.orientation = LinearLayout.VERTICAL
-        wrap.layoutParams = fullWrap().apply { topMargin = dp(8) }
+
         if (title != null) {
             val t = txt(title, 12f, pal.sec, false)
             t.setPadding(dp(4), dp(6), 0, dp(5))
@@ -848,14 +894,12 @@ class MainActivity : Activity(), HidMouse.Listener {
     private fun sheetTitle(t: String): View {
         val v = txt(t, 19f, pal.label, true)
         v.setPadding(0, dp(4), 0, dp(2))
-        v.layoutParams = fullWrap()
         return v
     }
 
     private fun sheetSub(t: String): View {
         val v = txt(t, 12f, pal.sec, false)
         v.setPadding(0, 0, 0, dp(12))
-        v.layoutParams = fullWrap()
         return v
     }
 
@@ -866,9 +910,37 @@ class MainActivity : Activity(), HidMouse.Listener {
         return v
     }
 
+    // ================================================================ 顶部提示
+
+    /**
+     * 顶部提示条。
+     *
+     * 不用系统 Toast：Android 11 起自定义 gravity 会被忽略，永远弹在底部。
+     * 这里是带受控动画的顶部浮层，风格与界面一致。
+     */
+    private fun toastTop(msg: String) {
+        val tv = toastView ?: return
+        tv.text = msg
+        tv.background = rounded(0xE6000000.toInt(), 20)
+        tv.visibility = View.VISIBLE
+        tv.alpha = 0f
+        tv.translationY = -dp(12).toFloat()
+        tv.animate().alpha(1f).translationY(0f).setDuration(160L).start()
+        ui.removeCallbacks(hideToast)
+        ui.postDelayed(hideToast, 2200L)
+    }
+
+    private val hideToast = Runnable {
+        val tv = toastView ?: return@Runnable
+        tv.animate().alpha(0f).translationY(-dp(12).toFloat()).setDuration(180L)
+            .withEndAction { if (toastView != null) toastView!!.visibility = View.GONE }
+            .start()
+    }
+
     // ================================================================ 抽屉
 
-    private fun showSheet(content: View) {
+    private fun showSheet(content: View, which: Int) {
+        openSheet = which
         sheetHost.show(content, pal)
     }
 
@@ -878,27 +950,26 @@ class MainActivity : Activity(), HidMouse.Listener {
         root.addView(sheetSub("可上下滑动 · 拖顶部横条或点空白处关闭"))
 
         root.addView(sheetPara("两种模式", "空鼠：握着手机转手腕控制指针，适合靠坐、远距离。\n触控板：手机放桌上，手指在白色区域滑动，像笔记本触摸板。"))
-        root.addView(sheetPara("顶部状态胶囊", "灰＝未注册，橙＝待配对，绿＝已连接。点它打开连接面板。"))
+        root.addView(sheetPara("顶部状态胶囊", "灰＝未注册，橙＝待连接，绿＝已连接。点它打开连接面板。"))
+        root.addView(sheetPara("配对 ≠ 连接", "「已配对」只表示双方认识、记住了地址；「已连接」才是鼠标真正能用。\n在连接面板里点设备才会真正建立连接。"))
+        root.addView(sheetPara("平板里该找哪个名字", "找你的手机蓝牙名称（本机名称见连接面板顶部），不是「AirMouse」。\nAirMouse 只是 HID 服务名，普通蓝牙列表里不显示。"))
         root.addView(sheetPara("框选 / 拖拽（两种都支持）", "双击拖拽：轻点一下 → 在设定时间内再按住并滑动 → 松手结束。适合手机放桌上。\n按钮锁定：按住左键到设定时长变蓝锁定 → 滑动手腕或面板 → 再点一下释放。适合单手握机。\n两者可在设置里分别开关。"))
-        root.addView(sheetPara("单击会不会变慢", "不会。轻点立即发出左键，不等待双击判定。"))
         root.addView(sheetPara("触控板手势", "单指滑＝移动指针；轻点＝左键；双击按住＝拖拽；长按＝右键；双指滑＝滚轮。"))
         root.addView(sheetPara("灵敏度 / 指针速度", "空鼠的「灵敏度」是转手腕的放大倍数；触控板的「指针速度」是手指滑动的放大倍数。"))
-        root.addView(sheetPara("水平 / 垂直反向", "只影响空鼠模式。方向反了就打开，不用改代码。"))
         root.addView(sheetPara("滚轮区", "上下滑动＝页面滚动；轻点＝中键单击。"))
-        root.addView(sheetPara("设置按钮", "齿轮图标里可以改主题、手势时长、拖拽方式开关、震动、常亮等，改完立即生效并记住。"))
+        root.addView(sheetPara("断线重连", "连接意外断开后会自动尝试重连（间隔逐次拉长）。\n手动点「断开当前连接」会暂停自动重连，避免你刚断开又被连回去。"))
 
         val close = bigButton("知道了", false)
         close.setOnClickListener { sheetHost.dismiss() }
         root.addView(close)
 
-        showSheet(root)
+        showSheet(root, SHEET_HELP)
     }
 
     private fun sheetPara(title: String, body: String): View {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.VERTICAL
         box.setPadding(0, dp(6), 0, dp(6))
-        box.layoutParams = fullWrap()
         val t = txt(title, 13.5f, pal.label, true)
         box.addView(t)
         val b = txt(body, 12.5f, pal.sec, false)
@@ -908,22 +979,30 @@ class MainActivity : Activity(), HidMouse.Listener {
         return box
     }
 
+    // ------------------------------------------------------------ 连接面板
+
     private fun showConnectSheet() {
+        connDeviceStatus = mutableListOf()
+        connStateText = null
+        connDiscoverBtn = null
+
         val root = sheetRoot()
         root.addView(sheetTitle("连接平板"))
-        val state = txt(connectStateText(), 12f, pal.sec, false)
-        state.setPadding(0, 0, 0, dp(12))
+
+        val state = txt("", 12f, pal.sec, false)
+        state.setLineSpacing(0f, 1.3f)
+        state.setPadding(0, 0, 0, dp(10))
+        connStateText = state
         root.addView(state)
 
-        val discover = bigButton("让平板发现我（5 分钟）", true)
-        discover.setOnClickListener {
-            makeDiscoverable()
-            state.text = "已开启可被发现（5 分钟），请在平板上搜索 AirMouse"
-        }
+        val discover = bigButton("", true)
+        connDiscoverBtn = discover
+        discover.setOnClickListener { onDiscoverButton() }
         root.addView(discover)
 
         val tip = txt(
-            "点这个之后，在平板上打开 设置 → 蓝牙 → 搜索新设备 → 选 AirMouse → 配对。只需一次，以后自动连。",
+            "第一次配对：点上面按钮 → 在平板上打开 设置 → 蓝牙 → 搜索新设备 → " +
+                "选择「" + hid.localName + "」（你的手机名，不是 AirMouse）→ 配对。",
             11.5f, pal.sec, false
         )
         tip.setPadding(dp(2), dp(8), dp(2), dp(12))
@@ -933,7 +1012,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         val devices = hid.bondedDevices()
         val rows = ArrayList<View>()
         if (devices.isEmpty()) {
-            rows.add(sheetItem("没有已配对设备", "先在平板上搜索 AirMouse 并配对", null))
+            rows.add(sheetItem("没有已配对设备", "先在平板上搜索本机的蓝牙名称并配对", null))
         } else {
             for (d in devices) {
                 val name = try {
@@ -941,11 +1020,33 @@ class MainActivity : Activity(), HidMouse.Listener {
                 } catch (e: SecurityException) {
                     d.address
                 }
-                val item = sheetItem(name, "点击连接", txt("连接", 13f, pal.sec, false))
+                // 右侧是唯一的操作入口，副标题不再写「点击连接」，避免看起来像两个按钮
+                val chipRow = LinearLayout(this)
+                chipRow.orientation = LinearLayout.HORIZONTAL
+                chipRow.gravity = Gravity.CENTER_VERTICAL
+                chipRow.setPadding(dp(10), dp(6), dp(10), dp(6))
+                chipRow.background = rounded(pal.grp, 10)
+
+                val dot = View(this)
+                val dotLp = LinearLayout.LayoutParams(dp(7), dp(7))
+                dotLp.rightMargin = dp(6)
+                dot.background = rounded(pal.sec, 4)
+                chipRow.addView(dot, dotLp)
+
+                val statusText = txt("连接", 13f, pal.accent, true)
+                chipRow.addView(statusText)
+
+                val item = sheetItem(name, d.address, chipRow)
+                item.isClickable = true
                 item.setOnClickListener {
+                    if (hid.isConnected && hid.connectedName == name) {
+                        toastTop("$name 已经连接")
+                        return@setOnClickListener
+                    }
                     hid.connectDevice(d)
-                    state.text = "正在连接 $name …"
+                    toastTop("正在连接 $name …")
                 }
+                connDeviceStatus.add(Triple(name, dot, statusText))
                 rows.add(item)
             }
         }
@@ -954,7 +1055,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         val disconnect = bigButton("断开当前连接", false)
         disconnect.setOnClickListener {
             hid.disconnectCurrent()
-            state.text = "已断开，等待平板重新连接"
+            toastTop("正在断开…")
         }
         root.addView(disconnect)
 
@@ -964,58 +1065,134 @@ class MainActivity : Activity(), HidMouse.Listener {
         close.setOnClickListener { sheetHost.dismiss() }
         root.addView(close)
 
-        showSheet(root)
+        showSheet(root, SHEET_CONNECT)
+        refreshConnectSheet()
     }
 
-    private fun connectStateText(): String = when {
-        hid.isConnected -> "已连接，可以直接使用"
-        hid.isRegistered -> "已注册为蓝牙鼠标，等待平板连接"
-        else -> "正在注册为蓝牙鼠标…"
+    private fun onDiscoverButton() {
+        if (discoverUntil > SystemClock.elapsedRealtime()) {
+            // 正在可被发现中 -> 尝试关闭
+            val stopped = tryStopDiscoverable()
+            discoverUntil = 0
+            ui.removeCallbacks(discoverTick)
+            refreshConnectSheet()
+            toastTop(
+                if (stopped) "已关闭可被发现"
+                else "系统不允许应用主动关闭，会在倒计时结束后自动关闭"
+            )
+            return
+        }
+        makeDiscoverable()
     }
+
+    private fun refreshConnectSheet() {
+        val leftMs = discoverUntil - SystemClock.elapsedRealtime()
+        val discovering = leftMs > 0
+
+        connDiscoverBtn?.let { btn ->
+            if (discovering) {
+                val sec = (leftMs / 1000).toInt()
+                btn.text = "可被发现中 · ${sec / 60}:${String.format(java.util.Locale.US, "%02d", sec % 60)} · 点击关闭"
+                btn.background = rounded(pal.orange, 12)
+            } else {
+                btn.text = "让平板发现我（5 分钟）"
+                btn.background = rounded(pal.accent, 12)
+            }
+        }
+
+        connStateText?.let { t ->
+            val sb = StringBuilder()
+            sb.append("本机蓝牙名称：").append(hid.localName).append('\n')
+                .append("平板里请找这个名字，不是 AirMouse")
+            if (hid.isConnected) {
+                sb.append('\n').append("已连接：").append(hid.connectedName)
+            } else if (hid.isConnecting) {
+                sb.append('\n').append("正在连接…")
+            } else if (hid.isRegistered) {
+                sb.append('\n').append("已注册，等待连接")
+            } else {
+                sb.append('\n').append("正在注册为蓝牙鼠标…")
+            }
+            if (lastStatus.isNotEmpty()) {
+                sb.append('\n').append(lastStatus)
+            }
+            t.text = sb.toString()
+            t.setTextColor(if (hid.isConnected) pal.green else pal.sec)
+        }
+
+        for (item in connDeviceStatus) {
+            val name = item.first
+            val dot = item.second
+            val chip = item.third
+            when {
+                hid.isConnected && hid.connectedName == name -> {
+                    chip.text = "已连接"
+                    chip.setTextColor(pal.green)
+                    dot.background = rounded(pal.green, 4)
+                }
+
+                hid.isConnecting && hid.connectingDevice != null -> {
+                    // 只要在连接流程里，非已连接行都显示连接中，避免误以为没反应
+                    chip.text = "连接中…"
+                    chip.setTextColor(pal.orange)
+                    dot.background = rounded(pal.orange, 4)
+                }
+
+                else -> {
+                    chip.text = "连接"
+                    chip.setTextColor(pal.accent)
+                    dot.background = rounded(pal.sec, 4)
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------- 设置面板
 
     private fun showSettingsSheet() {
         val root = sheetRoot()
         root.addView(sheetTitle("设置"))
         root.addView(sheetSub("改动立即生效"))
 
-        // 外观
         val themeRow = LinearLayout(this)
         themeRow.orientation = LinearLayout.HORIZONTAL
         themeRow.gravity = Gravity.CENTER_VERTICAL
         themeRow.setPadding(0, dp(4), 0, dp(6))
-        themeRow.layoutParams = fullWrap()
         themeRow.addView(
             txt("外观", 12f, pal.sec, false),
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
         themeRow.addView(themeSelector())
-        root.addView(themeRow)
+        root.addView(themeRow, fullWrap())
 
+        // 桌面图标：和深色模式放进同一张卡片，中间自动有分割线
         root.addView(
             group(
                 null,
                 sheetItem("深色模式", "切换后全部界面同步", sheetSwitch(resolveDark()) { v ->
-                    settings.theme = if (v) Settings.THEME_DARK else Settings.THEME_LIGHT
-                    recreate()
-                })
+                    applyTheme(if (v) Settings.THEME_DARK else Settings.THEME_LIGHT)
+                }),
+                iconSelector()
             )
         )
 
-        // 手势开关
         root.addView(
             group(
                 "手势",
-                sheetItem("双击拖拽", "轻点后短时间内再按住＝拖拽", sheetSwitch(settings.doubleTapDrag) { v ->
+                sheetItem("双击拖拽", "轻点两下按住＝拖拽；点一下再滑不会误触", sheetSwitch(settings.doubleTapDrag) { v ->
                     settings.doubleTapDrag = v
                     touchpad.doubleTapDragEnabled = v
                 }),
                 sheetItem("按钮锁定", "按住左键变蓝，持续按下", sheetSwitch(settings.latchEnabled) { v ->
                     settings.latchEnabled = v
+                }),
+                sheetItem("断线自动重连", "连接意外断开时自动重试", sheetSwitch(settings.autoReconnect) { v ->
+                    settings.autoReconnect = v
+                    hid.autoReconnect = v
                 })
             )
         )
 
-        // 时间参数
         val sliders = LinearLayout(this)
         sliders.orientation = LinearLayout.VERTICAL
         sliders.background = rounded(pal.grp, 11)
@@ -1023,28 +1200,27 @@ class MainActivity : Activity(), HidMouse.Listener {
             settings.dblWindowMs = v
             touchpad.dblWindowMs = v
         })
-        sliders.addView(divider())
+        sliders.addView(divider(), fullWrap())
         sliders.addView(sheetSeek("长按右键时长", 300, 900, settings.longPressMs, { "$it ms" }) { v ->
             settings.longPressMs = v
             touchpad.longPressMs = v
         })
-        sliders.addView(divider())
+        sliders.addView(divider(), fullWrap())
         sliders.addView(sheetSeek("左键锁定按住时长", 200, 800, settings.latchMs, { "$it ms" }) { v ->
             settings.latchMs = v
         })
-        sliders.addView(divider())
+        sliders.addView(divider(), fullWrap())
         sliders.addView(sheetSeek("轻点判定上限", 150, 500, settings.tapMaxMs, { "$it ms" }) { v ->
             settings.tapMaxMs = v
             touchpad.tapMaxMs = v
         })
-        sliders.addView(divider())
+        sliders.addView(divider(), fullWrap())
         sliders.addView(sheetSeek("滚轮一格距离", 12, 60, settings.wheelStepPx, { "$it px" }) { v ->
             settings.wheelStepPx = v
             touchpad.bindFrom(settings)
         })
         root.addView(group("时间参数", sliders))
 
-        // 其他
         root.addView(
             group(
                 "其他",
@@ -1073,8 +1249,9 @@ class MainActivity : Activity(), HidMouse.Listener {
         val reset = bigButton("恢复默认设置", false)
         reset.setOnClickListener {
             settings.resetAll()
-            toast("已恢复默认")
-            recreate()
+            toastTop("已恢复默认设置")
+            applyTheme(settings.theme)
+            hid.autoReconnect = settings.autoReconnect
         }
         root.addView(reset)
 
@@ -1084,18 +1261,136 @@ class MainActivity : Activity(), HidMouse.Listener {
         done.setOnClickListener { sheetHost.dismiss() }
         root.addView(done)
 
-        showSheet(root)
+        showSheet(root, SHEET_SETTINGS)
     }
 
-    private fun themeSelector(): View {
-        val seg = LinearLayout(this)
+    /**
+     * 切换主题。
+     *
+     * 不调用 recreate()：那会销毁 Activity → onDestroy → unregisterApp()，
+     * 蓝牙鼠标会被断开。这里只换配色并重建 View 树，hid 保持不变，
+     * 并且把当前打开的抽屉重新打开，所以设置界面不会关掉。
+     */
+    private fun applyTheme(theme: Int) {
+        settings.theme = theme
+        val wasSheet = openSheet
+        pal = Palette.of(resolveDark())
+        rebuildUi(wasSheet)
+        applySettings()
+        refreshStatus()
+    }
+
+    /**
+     * 桌面图标选择器。
+     *
+     * 结构和「深色模式」那些行完全一致：
+     * 「桌面图标」本身是一行普通标题（同字号同颜色），与上一行之间由 group() 自动加分割线，
+     * 下面两排图标之间再一条分割线。
+     */
+    private fun iconSelector(): View {
+        val wrap = LinearLayout(this)
+        wrap.orientation = LinearLayout.VERTICAL
+
+        val titleRow = LinearLayout(this)
+        titleRow.orientation = LinearLayout.HORIZONTAL
+        titleRow.gravity = Gravity.CENTER_VERTICAL
+        titleRow.setPadding(dp(14), dp(11), dp(14), dp(4))
+        titleRow.addView(txt("桌面图标", 14.5f, pal.label, false), fullWrap())
+        wrap.addView(titleRow, fullWrap())
+
+        val current = settings.appIcon
+        val size = dp(44)
+
+        wrap.addView(iconRow(intArrayOf(
+            IconManager.ICON_K, IconManager.ICON_G, IconManager.ICON_I
+        ), current, size), fullWrap())
+
+        wrap.addView(divider(), fullWrap())
+
+        wrap.addView(iconRow(intArrayOf(
+            IconManager.ICON_K2, IconManager.ICON_G2, IconManager.ICON_I2
+        ), current, size), fullWrap())
+
+        return wrap
+    }
+
+    private fun iconRow(ids: IntArray, current: Int, size: Int): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.setPadding(dp(6), dp(10), dp(6), dp(10))
+
+        for (i in ids) {
+            val selected = (i == current)
+
+            val cell = LinearLayout(this)
+            cell.orientation = LinearLayout.VERTICAL
+            cell.gravity = Gravity.CENTER
+            cell.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+            val img = ImageView(this)
+            img.setImageResource(iconFgRes(i))
+            img.background = iconThumbBg(i, selected)
+            img.layoutParams = LinearLayout.LayoutParams(size, size)
+            cell.addView(img)
+
+            val label = txt(IconManager.shortName(i), 10.5f,
+                if (selected) pal.accent else pal.sec, selected)
+            label.gravity = Gravity.CENTER
+            label.setPadding(0, dp(6), 0, 0)
+            cell.addView(label)
+
+            cell.setOnClickListener {
+                if (settings.appIcon == i) return@setOnClickListener
+                settings.appIcon = i
+                val ok = IconManager.apply(this, i)
+                toastTop(
+                    if (ok) "已切换到「${IconManager.shortName(i)}」"
+                    else "切换失败，当前桌面可能不支持动态图标"
+                )
+                rebuildUi(SHEET_SETTINGS)
+            }
+            row.addView(cell)
+        }
+        return row
+    }
+
+    /** 缩略图底：用图标自身的底色，再加一圈描边，浅底图标才不会糊在卡片上 */
+    private fun iconThumbBg(index: Int, selected: Boolean): GradientDrawable {
+        val fill = when (index) {
+            IconManager.ICON_I, IconManager.ICON_I2 -> 0xFF007AFF.toInt()
+            IconManager.ICON_K, IconManager.ICON_K2 -> 0xFF000000.toInt()
+            else -> 0xFFF2F2F7.toInt()
+        }
+        val d = GradientDrawable()
+        d.setColor(fill)
+        d.cornerRadius = dp(11).toFloat()
+        d.setStroke(dp(if (selected) 2 else 1), if (selected) pal.accent else pal.sep)
+        return d
+    }
+
+    /** 只取前景线条，底色由 iconThumbBg 负责 */
+    private fun iconFgRes(index: Int): Int = when (index) {
+        IconManager.ICON_I -> R.drawable.ic_i_fg
+        IconManager.ICON_K -> R.drawable.ic_k_fg
+        IconManager.ICON_G2 -> R.drawable.ic_g2_fg
+        IconManager.ICON_I2 -> R.drawable.ic_i2_fg
+        IconManager.ICON_K2 -> R.drawable.ic_k2_fg
+        else -> R.drawable.ic_g_fg
+    }
+
+    private fun iconRes(index: Int): Int = when (index) {
+        IconManager.ICON_I -> R.mipmap.ic_i
+        IconManager.ICON_K -> R.mipmap.ic_k
+        IconManager.ICON_G2 -> R.mipmap.ic_g2
+        IconManager.ICON_I2 -> R.mipmap.ic_i2
+        IconManager.ICON_K2 -> R.mipmap.ic_k2
+        else -> R.mipmap.ic_g
+    }
+
+    private fun themeSelector(): View {        val seg = LinearLayout(this)
         seg.orientation = LinearLayout.HORIZONTAL
         seg.background = rounded(pal.track, 7)
         seg.setPadding(dp(2), dp(2), dp(2), dp(2))
-        seg.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
 
         val labels = arrayOf("浅色", "深色", "跟随")
         val values = intArrayOf(Settings.THEME_LIGHT, Settings.THEME_DARK, Settings.THEME_SYSTEM)
@@ -1107,10 +1402,7 @@ class MainActivity : Activity(), HidMouse.Listener {
             t.setPadding(dp(9), dp(4), dp(9), dp(4))
             if (values[i] == current) t.background = rounded(pal.card, 5)
             val v = values[i]
-            t.setOnClickListener {
-                settings.theme = v
-                recreate()
-            }
+            t.setOnClickListener { applyTheme(v) }
             seg.addView(t)
         }
         return seg
@@ -1119,8 +1411,11 @@ class MainActivity : Activity(), HidMouse.Listener {
     // ================================================================ 状态刷新
 
     private fun refreshStatus() {
+        if (!::pill.isInitialized) return
         val connected = hid.isConnected
         val registered = hid.isRegistered
+        val connecting = hid.isConnecting
+
         val text: String
         val color: Int
         val bgColor: Int
@@ -1131,8 +1426,14 @@ class MainActivity : Activity(), HidMouse.Listener {
                 bgColor = if (pal.isDark) 0x3330D158 else 0x2234C759
             }
 
+            connecting -> {
+                text = "连接中"
+                color = pal.orange
+                bgColor = if (pal.isDark) 0x33FF9F0A else 0x22FF9500
+            }
+
             registered -> {
-                text = "待配对"
+                text = "待连接"
                 color = pal.orange
                 bgColor = if (pal.isDark) 0x33FF9F0A else 0x22FF9500
             }
@@ -1147,22 +1448,22 @@ class MainActivity : Activity(), HidMouse.Listener {
         pill.setTextColor(color)
         pill.background = rounded(bgColor, 20)
 
-        if (settings.showDiag) {
+        if (openSheet == SHEET_CONNECT) refreshConnectSheet()
+
+        if (settings.showDiag && ::diag.isInitialized) {
             val sb = StringBuilder()
             sb.append("陀螺仪 ").append(if (engine.hasGyro) "正常" else "缺失")
                 .append(" · 姿态 ").append(if (engine.hasRotation) "3D" else "2D")
                 .append('\n')
             sb.append(
                 String.format(
-                    java.util.Locale.US,
-                    "ω %+.2f %+.2f %+.2f",
+                    java.util.Locale.US, "ω %+.2f %+.2f %+.2f",
                     engine.telRawX, engine.telRawY, engine.telRawZ
                 )
             ).append('\n')
             sb.append(
                 String.format(
-                    java.util.Locale.US,
-                    "yaw %+.2f pitch %+.2f → dx %+.0f dy %+.0f",
+                    java.util.Locale.US, "yaw %+.2f pitch %+.2f → dx %+.0f dy %+.0f",
                     engine.telYaw, engine.telPitch, engine.telDx, engine.telDy
                 )
             ).append('\n')
@@ -1173,11 +1474,17 @@ class MainActivity : Activity(), HidMouse.Listener {
     }
 
     override fun onStatus(text: String) {
-        runOnUiThread { lastStatus = text }
+        runOnUiThread {
+            lastStatus = text
+            if (openSheet == SHEET_CONNECT) refreshConnectSheet()
+        }
     }
 
-    private fun toast(msg: String) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    override fun onChanged() {
+        runOnUiThread {
+            refreshStatus()
+            if (openSheet == SHEET_CONNECT) refreshConnectSheet()
+        }
     }
 
     // ================================================================ 蓝牙流程
@@ -1210,7 +1517,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
             hid.start()
         } else {
-            toast("缺少蓝牙权限，请到 设置 → 应用 → AirMouse → 权限 全部允许")
+            toastTop("缺少蓝牙权限，请到 设置 → 应用 → AirMouse → 权限 全部允许")
         }
     }
 
@@ -1220,7 +1527,40 @@ class MainActivity : Activity(), HidMouse.Listener {
         try {
             startActivityForResult(intent, REQ_DISCOVERABLE)
         } catch (t: Throwable) {
-            toast("无法开启「可被发现」：${t.message}")
+            toastTop("无法开启可被发现：${t.message}")
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_DISCOVERABLE) return
+        // ACTION_REQUEST_DISCOVERABLE 的 resultCode 就是可被发现的秒数，取消时为 RESULT_CANCELED(0)
+        if (resultCode > 0) {
+            discoverUntil = SystemClock.elapsedRealtime() + resultCode * 1000L
+            ui.removeCallbacks(discoverTick)
+            ui.post(discoverTick)
+            toastTop("已开启可被发现 $resultCode 秒，请在平板上搜索「${hid.localName}」")
+        } else {
+            discoverUntil = 0
+            refreshConnectSheet()
+            toastTop("你取消了「可被发现」")
+        }
+    }
+
+    /** 尝试主动关闭可被发现（隐藏 API，失败时返回 false） */
+    private fun tryStopDiscoverable(): Boolean {
+        return try {
+            val mgr = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val ad = mgr?.adapter ?: return false
+            val method = BluetoothAdapter::class.java.getMethod(
+                "setScanMode",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType
+            )
+            method.invoke(ad, BluetoothAdapter.SCAN_MODE_CONNECTABLE, -1)
+            true
+        } catch (t: Throwable) {
+            false
         }
     }
 

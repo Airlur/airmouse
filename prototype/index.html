@@ -275,10 +275,118 @@
   .notes .ask{margin-top:16px;padding:12px 14px;background:#14181F;border-left:2px solid #007AFF;border-radius:6px;font-size:12.5px;color:#A8B2C0}
   .notes .foot{margin-top:15px;padding-top:12px;border-top:1px solid #1E1E24;font-size:11.5px;color:#48484F}
   @media (max-width:920px){ body{gap:26px;padding:16px 10px;align-items:flex-start} .notes{width:100%;max-width:390px} }
+  /* ================= Logo 方案区 ================= */
+  .logoPanel{ width:264px; flex:0 0 auto; align-self:flex-start; padding-top:40px; }
+  .logoPanel h5{ font-size:12px; color:#55627A; font-weight:600; margin:0 0 3px; letter-spacing:.6px; text-transform:uppercase; }
+  .logoPanel .cap{font-size:11px; color:#3E4959; margin-bottom:15px; line-height:1.55}
+  .logoCols{display:flex; gap:18px}
+.logoCol{display:flex; flex-direction:column; gap:14px}
+  .logoCell{width:112px; text-align:center; cursor:pointer}
+  .logoBox{ width:112px; height:112px; border-radius:26px; display:flex; align-items:center; justify-content:center; transition:transform .16s, box-shadow .16s; }
+  .logoBox.bgLight{background:#F2F2F7; box-shadow:0 0 0 1px #DCDCE2, 0 6px 16px rgba(0,0,0,.45)}
+  .logoBox.bgInk{background:#000; box-shadow:0 0 0 1px #1E1E1E, 0 6px 16px rgba(0,0,0,.6)}
+  .logoBox.bgBlue{background:#007AFF; box-shadow:0 0 0 1px #0A6FE0, 0 8px 20px rgba(0,122,255,.35)}
+  .logoCell:hover .logoBox{transform:translateY(-3px)}
+  .logoCell.sel .logoBox{box-shadow:0 0 0 3px #0A84FF, 0 0 22px rgba(10,132,255,.45)}
+  .logoCell span{display:block; font-size:10.5px; color:#5D6878; margin-top:7px; line-height:1.4}
+  .logoCell.sel span{color:#4FA8FF}
+  .logoBox svg{display:block}
+  .logoNote{ margin-top:18px; font-size:11px; color:#46505F; line-height:1.7; border-top:1px solid #1B2028; padding-top:12px; }
+  @media (max-width:1100px){ .logoPanel{display:none} }
+    .iconTitleRow{padding:12px 14px 2px; font-size:14.5px; color:var(--label); border-top:.5px solid var(--sep)}
+.iconPickRow{display:flex; justify-content:space-around; padding:10px 6px}
+  .iconPickRow.sep{border-top:.5px solid var(--sep)}
+  .iconCell{text-align:center; cursor:pointer; padding:4px 2px; border-radius:10px}
+  .iconCell span{display:block; font-size:10.5px; color:var(--sec); margin-top:6px}
+  .iconCell.sel span{color:var(--accent); font-weight:600}
+  .iconThumb{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 0 .5px var(--sep); transition:box-shadow .15s}
+  .iconCell.sel .iconThumb{box-shadow:0 0 0 2px var(--accent)}
+  .iconThumb.bgLight{background:#F2F2F7}
+  .iconThumb.bgInk{background:#000}
+  .iconThumb.bgBlue{background:#007AFF}
 </style>
 </head>
 <body>
 
+<div class="logoPanel">
+  <h5>Logo 方案</h5>
+  <div class="cap">上排：圆环半圈高亮（G 浅底 / I 蓝底 / K 黑底）。下排：同配色，整圈高亮。</div>
+  <div class="logoCols">
+    <div class="logoCol">
+      <div class="logoCell sel" data-logo="K">
+        <div class="logoBox bgInk">
+          <svg width="76" height="76" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="#FFFFFF" stroke-width="2.2" opacity=".2"/>
+            <path d="M38 8 A30 30 0 0 1 68 38" fill="none" stroke="#0A84FF" stroke-width="3.2" stroke-linecap="round"/>
+            <rect x="28" y="24" width="20" height="28" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2.6"/>
+            <line x1="38" y1="24" x2="38" y2="34" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span>K · 黑底蓝环</span>
+      </div>
+      <div class="logoCell" data-logo="G">
+        <div class="logoBox bgLight">
+          <svg width="76" height="76" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="#007AFF" stroke-width="2.2" opacity=".27"/>
+            <path d="M38 8 A30 30 0 0 1 68 38" fill="none" stroke="#007AFF" stroke-width="3.2" stroke-linecap="round"/>
+            <rect x="28" y="24" width="20" height="28" rx="10" fill="none" stroke="#007AFF" stroke-width="2.6"/>
+            <line x1="38" y1="24" x2="38" y2="34" stroke="#007AFF" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span>G · 白底蓝环</span>
+      </div>
+      <div class="logoCell" data-logo="I">
+        <div class="logoBox bgBlue">
+          <svg width="76" height="76" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="#FFFFFF" stroke-width="2.2" opacity=".34"/>
+            <path d="M38 8 A30 30 0 0 1 68 38" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round"/>
+            <rect x="28" y="24" width="20" height="28" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2.6"/>
+            <line x1="38" y1="24" x2="38" y2="34" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span>I · 蓝底白环</span>
+      </div>
+    </div>
+    <div class="logoCol">
+      <div class="logoCell" data-logo="K2">
+        <div class="logoBox bgInk">
+          <svg width="76" height="76" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="#0A84FF" stroke-width="2.4"/>
+            <rect x="28" y="24" width="20" height="28" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2.6"/>
+            <line x1="38" y1="24" x2="38" y2="34" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span>K2 · 黑底全环</span>
+      </div>
+      <div class="logoCell" data-logo="G2">
+        <div class="logoBox bgLight">
+          <svg width="76" height="76" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="#007AFF" stroke-width="2.4"/>
+            <rect x="28" y="24" width="20" height="28" rx="10" fill="none" stroke="#007AFF" stroke-width="2.6"/>
+            <line x1="38" y1="24" x2="38" y2="34" stroke="#007AFF" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span>G2 · 白底全环</span>
+      </div>
+      <div class="logoCell" data-logo="I2">
+        <div class="logoBox bgBlue">
+          <svg width="76" height="76" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="#FFFFFF" stroke-width="2.4"/>
+            <rect x="28" y="24" width="20" height="28" rx="10" fill="none" stroke="#FFFFFF" stroke-width="2.6"/>
+            <line x1="38" y1="24" x2="38" y2="34" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span>I2 · 蓝底全环</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="logoNote">
+    浅底用 <b style="color:#7FC4FF">#007AFF</b>，深底用 <b style="color:#7FC4FF">#0A84FF</b>。<br>
+    这六套已做进 App，可在「设置 → 桌面图标」实时切换，默认 K。
+  </div>
+</div>
 <div class="phone" id="phone">
   <div class="island"></div>
   <div class="statusbar"><span>22:50</span><span>5G&nbsp;&nbsp;88%</span></div>
@@ -434,6 +542,17 @@
         </div>
         <div class="grp">
           <div class="item"><div>深色模式<small>切到深色后所有界面同步</small></div><div class="sw" id="swDark"></div></div>
+          <div class="iconTitleRow">桌面图标</div>
+          <div class="iconPickRow">
+            <div class="iconCell sel" data-icon="K"><div class="iconThumb bgInk"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#FFFFFF" stroke-width="3" opacity=".2"/><path d="M54,28 A26,26 0 0,1 80,54" fill="none" stroke="#0A84FF" stroke-width="4.5" stroke-linecap="round"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>黑底蓝环</span></div>
+            <div class="iconCell" data-icon="G"><div class="iconThumb bgLight"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#007AFF" stroke-width="3" opacity=".27"/><path d="M54,28 A26,26 0 0,1 80,54" fill="none" stroke="#007AFF" stroke-width="4.5" stroke-linecap="round"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#007AFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#007AFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>白底蓝环</span></div>
+            <div class="iconCell" data-icon="I"><div class="iconThumb bgBlue"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#FFFFFF" stroke-width="3" opacity=".34"/><path d="M54,28 A26,26 0 0,1 80,54" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>蓝底白环</span></div>
+          </div>
+          <div class="iconPickRow sep">
+            <div class="iconCell" data-icon="K2"><div class="iconThumb bgInk"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#0A84FF" stroke-width="4.5"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>黑底全环</span></div>
+            <div class="iconCell" data-icon="G2"><div class="iconThumb bgLight"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#007AFF" stroke-width="4.5"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#007AFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#007AFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>白底全环</span></div>
+            <div class="iconCell" data-icon="I2"><div class="iconThumb bgBlue"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#FFFFFF" stroke-width="4.5"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>蓝底全环</span></div>
+          </div>
         </div>
 
         <div class="grpTitle">手势</div>
@@ -485,7 +604,7 @@
 
 <!-- ================= 说明 ================= -->
 <div class="notes">
-  <h3>原型 v7 · 待确认</h3>
+  <h3>原型 v3.1 · 待确认</h3>
   <div class="sub">App 代码未改动、未推送</div>
 
   <div class="item"><b>这次改的</b>
@@ -869,6 +988,21 @@
     }
     ['pointerup','pointercancel'].forEach(function(ev){ grab.addEventListener(ev, up); });
   });
+
+  /* ---------- Logo / 图标选择 ---------- */
+  function bindPicker(selector, cls){
+    var cells = document.querySelectorAll(selector);
+    Array.prototype.forEach.call(cells, function(cell){
+      cell.addEventListener('click', function(){
+        Array.prototype.forEach.call(cells, function(c){ c.classList.remove(cls); });
+        cell.classList.add(cls);
+        var id = cell.getAttribute('data-logo') || cell.getAttribute('data-icon');
+        toast('已选 ' + id);
+      });
+    });
+  }
+  bindPicker('.logoCell', 'sel');
+  bindPicker('.iconCell', 'sel');
 
   /* ---------- 连接模拟 ---------- */
   var pill = document.getElementById('pill'), pillTxt = document.getElementById('pillTxt');

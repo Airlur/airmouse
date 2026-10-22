@@ -35,7 +35,7 @@ class TouchpadView(context: Context) : View(context) {
     var onDragStateChanged: ((Boolean) -> Unit)? = null
 
     var gain: Float = 1.8f
-    var doubleTapDragEnabled: Boolean = true
+    var doubleTapDragEnabled: Boolean = false
     var dblWindowMs: Int = 260
     var longPressMs: Int = 520
     var tapMaxMs: Int = 300
@@ -43,8 +43,15 @@ class TouchpadView(context: Context) : View(context) {
     var wheelInvert: Boolean = false
     var hapticsEnabled: Boolean = true
 
+    /** 判定「手指真的在移动」的最小距离。必须按密度换算，否则高 DPI 上等于没有阈值 */
+    private val slop: Float
+        get() = 10f * resources.displayMetrics.density
+
+    /** 单个事件允许的最大位移，防止异常事件把指针甩飞 */
+    private val maxStep: Float
+        get() = 220f * resources.displayMetrics.density
+
     private val handler = Handler(Looper.getMainLooper())
-    private val slop = 12f
 
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF007AFF.toInt() }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33007AFF }
@@ -66,6 +73,21 @@ class TouchpadView(context: Context) : View(context) {
     private var scrollAcc = 0f
     private var twoFingerMoved = 0f
     private var lastTapUpTime = 0L
+
+    /**
+     * 「预备拖拽」状态。
+     *
+     * 双击拖拽必须开着，但「点一下、再滑动指针」是极常见的正常操作。
+     * 两者在按下瞬间完全一样，区别只在之后：
+     *   - 按下后很快就开始移动  -> 用户想移动指针，不是拖拽
+     *   - 按下后按住不动一段时间 -> 用户想双击拖拽
+     * 所以第二次按下先不发左键，等一小段再决定。
+     */
+    private var pendingDrag = false
+    private var dragArmedAt = 0L
+
+    /** 预备期内如果先动了，就判定为「移动指针」 */
+    private val pendingDragGuardMs = 140L
 
     private var touching = false
     private var touchX = 0f
@@ -138,16 +160,34 @@ class TouchpadView(context: Context) : View(context) {
             (now - lastTapUpTime) <= dblWindowMs
 
         if (inDoubleTap) {
-            dragging = true
+            // 先只进入预备状态，不按左键。
+            // 如果这段时间内手指开始移动，就说明用户其实是想移动指针。
+            pendingDrag = true
+            dragging = false
+            dragArmedAt = now
             lastTapUpTime = 0L
-            haptic(HapticFeedbackConstants.CLOCK_TICK)
-            onDragStateChanged?.invoke(true)
-            onLeftDown?.invoke()
+            handler.removeCallbacks(longPressRunnable)
+            handler.removeCallbacks(armDragRunnable)
+            handler.postDelayed(armDragRunnable, pendingDragGuardMs)
         } else {
+            pendingDrag = false
             dragging = false
             handler.postDelayed(longPressRunnable, longPressMs.toLong())
         }
         invalidate()
+    }
+
+    /** 预备期内一直没怎么动 -> 认定是双击拖拽，这时才真正按下左键 */
+    private val armDragRunnable = object : Runnable {
+        override fun run() {
+            if (!pendingDrag) return
+            if (moved > slop) return
+            pendingDrag = false
+            dragging = true
+            haptic(HapticFeedbackConstants.CLOCK_TICK)
+            onDragStateChanged?.invoke(true)
+            onLeftDown?.invoke()
+        }
     }
 
     private fun handleMove(event: MotionEvent) {
@@ -163,7 +203,7 @@ class TouchpadView(context: Context) : View(context) {
                 val notches = (scrollAcc / step).toInt()
                 if (notches != 0) {
                     scrollAcc -= notches * step
-                    // 手指上滑（dy<0）=> notches<0 => 取反后为正向，即「内容向上滚」
+                    // 手指上滑 dy<0 → notches<0 → 取反成正数 = 内容向上滚（自然滚动）
                     var w = -notches
                     if (wheelInvert) w = -w
                     if (w != 0) onWheel?.invoke(w)
@@ -172,8 +212,8 @@ class TouchpadView(context: Context) : View(context) {
             return
         }
 
-        val dx = event.x - lastX
-        val dy = event.y - lastY
+        val dx = (event.x - lastX).coerceIn(-maxStep, maxStep)
+        val dy = (event.y - lastY).coerceIn(-maxStep, maxStep)
         lastX = event.x
         lastY = event.y
         touchX = event.x
@@ -182,7 +222,17 @@ class TouchpadView(context: Context) : View(context) {
 
         if (moved > slop) handler.removeCallbacks(longPressRunnable)
 
-        if (dragging || moved > slop) {
+        // 预备拖拽：一旦手指开始移动，说明用户是想移动指针，取消拖拽判定
+        if (pendingDrag && moved > slop) {
+            pendingDrag = false
+            handler.removeCallbacks(armDragRunnable)
+            // 取消拖拽后仍允许长按右键
+            handler.postDelayed(longPressRunnable, longPressMs.toLong())
+        }
+
+        // 只有确实在移动时才发位移；手指没动就一个字节都不发，
+        // 避免把噪声当成移动，导致平板上的指针自己乱跑。
+        if (moved > slop || dragging) {
             onMove?.invoke(dx * gain, dy * gain)
         }
         invalidate()
@@ -190,9 +240,19 @@ class TouchpadView(context: Context) : View(context) {
 
     private fun handleUp() {
         handler.removeCallbacks(longPressRunnable)
+        handler.removeCallbacks(armDragRunnable)
         val dur = System.currentTimeMillis() - downTime
         touching = false
         invalidate()
+
+        // 预备拖拽期间就松手 -> 只是一次普通的第二次点击（双击的第二击）
+        if (pendingDrag) {
+            pendingDrag = false
+            haptic(HapticFeedbackConstants.KEYBOARD_TAP)
+            onLeftClick?.invoke()
+            lastTapUpTime = 0L
+            return
+        }
 
         if (dragging) {
             dragging = false
@@ -222,7 +282,9 @@ class TouchpadView(context: Context) : View(context) {
 
     private fun handleCancel() {
         handler.removeCallbacks(longPressRunnable)
+        handler.removeCallbacks(armDragRunnable)
         touching = false
+        pendingDrag = false
         if (dragging) {
             dragging = false
             onDragStateChanged?.invoke(false)

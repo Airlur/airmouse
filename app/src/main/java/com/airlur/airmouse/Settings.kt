@@ -23,6 +23,12 @@ class Settings(context: Context) {
         const val DEF_TAP_MS = 300
         const val DEF_WHEEL_PX = 24
 
+        /** 触控板指针倍率上限，防止高灵敏度下指针甩飞 */
+        const val PAD_GAIN_MAX = 2.0f
+
+        /** 默认桌面图标方案（K） */
+        const val DEF_ICON = 2
+
         private const val KEY_THEME = "theme"
         private const val KEY_AIR_SENS = "air_sens"
         private const val KEY_PAD_SENS = "pad_sens"
@@ -40,6 +46,8 @@ class Settings(context: Context) {
         private const val KEY_MID = "mid_click"
         private const val KEY_DIAG = "show_diag"
         private const val KEY_WHEEL_INV = "wheel_invert"
+        private const val KEY_AUTO_RECONNECT = "auto_reconnect"
+        private const val KEY_ICON = "app_icon"
     }
 
     private val sp = context.getSharedPreferences("airmouse_prefs", Context.MODE_PRIVATE)
@@ -113,11 +121,24 @@ class Settings(context: Context) {
         get() = sp.getBoolean(KEY_WHEEL_INV, false)
         set(v) = sp.edit().putBoolean(KEY_WHEEL_INV, v).apply()
 
+    /** 断线后是否自动重连 */
+    var autoReconnect: Boolean
+        get() = sp.getBoolean(KEY_AUTO_RECONNECT, true)
+        set(v) = sp.edit().putBoolean(KEY_AUTO_RECONNECT, v).apply()
+
+    /** 桌面图标方案索引，见 IconManager */
+    var appIcon: Int
+        get() = sp.getInt(KEY_ICON, DEF_ICON)
+        set(v) = sp.edit().putInt(KEY_ICON, v).apply()
+
     /** 空鼠灵敏度：0..100 -> 300..3000 */
     fun airSensitivity(): Double = 300.0 + airSens * 27.0
 
-    /** 触控板指针倍率：0..100 -> 0.6..3.4 */
-    fun padGain(): Float = 0.6f + padSens * 0.028f
+    /** 触控板指针倍率：0..100 -> 0.5..2.0（封顶，避免指针甩飞） */
+    fun padGain(): Float {
+        val g = 0.5f + padSens * 0.015f
+        return if (g > PAD_GAIN_MAX) PAD_GAIN_MAX else g
+    }
 
     fun resetAll() {
         sp.edit().clear().apply()
