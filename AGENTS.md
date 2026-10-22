@@ -1,0 +1,51 @@
+# AirMouse 项目协作规则
+
+## 一、改动流程（强制，不可跳过）
+
+任何功能或界面的改动，必须严格按这个顺序：
+
+```
+1. 先改原型（prototype/index.html）
+2. 等用户确认原型
+3. 再改 App 代码
+4. 自查：代码逻辑是否真的对应本次要改的问题
+5. 再等用户确认是否推送
+6. 用户明确说「推送」之后，才能 git commit + git push
+```
+
+**绝对禁止：**
+- 跳过原型直接改 Kotlin
+- 未经用户明确同意就 `git commit` 或 `git push`
+- 交付前不做自查就声称「改好了」
+
+## 二、交付前必做的自查
+
+在请用户确认之前，逐条核对：
+
+1. 这次要修的问题，每一处都对应到具体代码/原型位置了吗？
+2. 有没有可能重现用户上次反馈过的同类问题？
+3. 原型和 App 的界面、文案、交互是否**完全一致**？
+4. App 端改动是否已经在原型里同步体现？
+5. 编译是否通过（本地 kotlinc + android.jar）？
+6. 原型渲染是否验证过（headless 截图 + 尺寸测量）？
+
+## 三、本地验证手段
+
+- Kotlin 编译：
+  `D:\Projects\Android\_toolchain` 下的 JDK 17 + kotlinc 1.9.24 + `platform34\android-34\android.jar`
+  （`R` 类需用工具链目录下的 stub，不能放进仓库）
+- 原型渲染：
+  `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe --headless=new --screenshot`
+  测量时 CSS 必须加 `*,*::before,*::after{transition:none!important;animation:none!important}`
+
+## 四、版本号
+
+- 小修：`3.3.1`
+- 功能迭代：`3.4`
+- 架构重写才动主版本
+- 原型标题与 `versionName` 保持一致
+
+## 五、已安装设备
+
+- 签名已固定（`keystore/debug.jks`），3.3 起可覆盖升级
+- 3.2 及更早的包签名不固定，升级需先卸载

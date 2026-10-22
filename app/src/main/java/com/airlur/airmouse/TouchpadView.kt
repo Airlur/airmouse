@@ -3,6 +3,7 @@ package com.airlur.airmouse
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.view.HapticFeedbackConstants
@@ -55,6 +56,9 @@ class TouchpadView(context: Context) : View(context) {
 
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF007AFF.toInt() }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33007AFF }
+    /** 右侧滚动方向指示用 */
+    private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val hintPath = Path()
 
     var accentColor: Int = 0xFF007AFF.toInt()
         set(v) {
@@ -88,6 +92,20 @@ class TouchpadView(context: Context) : View(context) {
 
     /** 预备期内如果先动了，就判定为「移动指针」 */
     private val pendingDragGuardMs = 140L
+
+    /** 双指滚动时右侧箭头指示的存活时间与方向 */
+    private var scrollHintUntil = 0L
+    private var scrollHintDir = 1
+    private var lastScrollAt = 0L
+
+    private val hintTicker = object : Runnable {
+        override fun run() {
+            invalidate()
+            if (System.currentTimeMillis() < scrollHintUntil) {
+                postDelayed(this, 32L)
+            }
+        }
+    }
 
     private var touching = false
     private var touchX = 0f
@@ -207,6 +225,7 @@ class TouchpadView(context: Context) : View(context) {
                     var w = -notches
                     if (wheelInvert) w = -w
                     if (w != 0) onWheel?.invoke(w)
+                    showScrollHint(dy < 0)
                 }
             }
             return
@@ -309,10 +328,59 @@ class TouchpadView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        // 双指滚动的方向指示：右侧三个三角，越靠滚动方向越实，停手后淡出
+        val now = System.currentTimeMillis()
+        if (now < scrollHintUntil) {
+            val remain = (scrollHintUntil - now).toFloat() / 520f
+            val appear = if (remain > 0.8f) (1f - remain) / 0.2f else remain / 0.8f
+            drawScrollHint(canvas, scrollHintDir, appear.coerceIn(0f, 1f))
+        }
+
         if (!touching) return
         val r = if (dragging) 30f else 22f
         glowPaint.color = accentColor and 0x00FFFFFF or 0x33000000
         canvas.drawCircle(touchX, touchY, r * 1.5f, glowPaint)
         canvas.drawCircle(touchX, touchY, r, dotPaint)
+    }
+
+    /** 触发右侧滚动方向指示 */
+    private fun showScrollHint(up: Boolean) {
+        scrollHintDir = if (up) -1 else 1
+        scrollHintUntil = System.currentTimeMillis() + 520L
+        if (System.currentTimeMillis() - lastScrollAt < 40L) return
+        lastScrollAt = System.currentTimeMillis()
+        removeCallbacks(hintTicker)
+        postDelayed(hintTicker, 0L)
+    }
+
+    private fun drawScrollHint(canvas: Canvas, dir: Int, alpha: Float) {
+        val d = resources.displayMetrics.density
+        val cx = width - 22f * d
+        val cy = height / 2f
+        val gap = 15f * d
+        val halfW = 6f * d
+        val h = 8f * d
+
+        // 越靠近滚动方向越实：向下滚时上方最实，向上滚时下方最实
+        val weights = if (dir > 0) floatArrayOf(1f, 0.55f, 0.22f) else floatArrayOf(0.22f, 0.55f, 1f)
+
+        for (i in 0 until 3) {
+            val y = cy + (i - 1) * gap.toInt()
+            val a = (weights[i] * alpha * 255).toInt().coerceIn(0, 255)
+            hintPaint.color = (accentColor and 0x00FFFFFF) or (a shl 24)
+            hintPath.reset()
+            if (dir > 0) {
+                hintPath.moveTo(cx - halfW, y - h / 2f)
+                hintPath.lineTo(cx + halfW, y - h / 2f)
+                hintPath.lineTo(cx, y + h / 2f)
+            } else {
+                hintPath.moveTo(cx - halfW, y + h / 2f)
+                hintPath.lineTo(cx + halfW, y + h / 2f)
+                hintPath.lineTo(cx, y - h / 2f)
+            }
+            hintPath.close()
+            canvas.drawPath(hintPath, hintPaint)
+        }
     }
 }

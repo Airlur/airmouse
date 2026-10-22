@@ -4,23 +4,30 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.drawable.Drawable
 import android.view.View
 
 /**
  * 顶部圆形图标按钮。
  *
- * kind = KIND_SLIDERS 时画三条带滑块的横线（设置），
- * kind = KIND_HELP    时画一个问号。
+ * kind = KIND_SLIDERS 时画三条带滑块的横线，
+ * kind = KIND_HELP    时画一个问号，
+ * kind = KIND_ICON    时使用 drawable 里的标准矢量图标（传 resId）。
  *
  * 自己画的原因：项目零依赖，不引入 AndroidX / 图标库；
  * 同时避免用 "⚙" 之类的 Unicode 字符在不同系统上字体不一致。
+ * bug 图标用矢量 drawable，是因为手画的虫子比例不对、看着粗糙。
  */
-class IconButton(context: Context, private val kind: Int) : View(context) {
+class IconButton(
+    context: Context,
+    private val kind: Int,
+    iconRes: Int = 0
+) : View(context) {
 
     companion object {
         const val KIND_SLIDERS = 0
         const val KIND_HELP = 1
-        const val KIND_BUG = 2
+        const val KIND_ICON = 2
     }
 
     var circleColor: Int = 0xFFE5E5EA.toInt()
@@ -33,6 +40,7 @@ class IconButton(context: Context, private val kind: Int) : View(context) {
         set(v) {
             field = v
             fgPaint.color = v
+            icon?.setTint(v)
             invalidate()
         }
 
@@ -48,8 +56,12 @@ class IconButton(context: Context, private val kind: Int) : View(context) {
         isFakeBoldText = true
     }
 
+    /** 矢量图标（仅 KIND_ICON 使用） */
+    private var icon: Drawable? = if (iconRes != 0) context.getDrawable(iconRes) else null
+
     init {
         textPaint.textSize = dp(15).toFloat()
+        icon?.setTint(fgColor)
         setWillNotDraw(false)
     }
 
@@ -79,8 +91,20 @@ class IconButton(context: Context, private val kind: Int) : View(context) {
             return
         }
 
-        if (kind == KIND_BUG) {
-            drawBug(canvas, cx, cy, r)
+        if (kind == KIND_ICON) {
+            val d = icon
+            if (d != null) {
+                // 图标占圆内的 58%，比圆形按钮略小，视觉上不顶边
+                val half = (r * 0.58f).toInt()
+                d.setBounds(
+                    (cx - half).toInt(), (cy - half).toInt(),
+                    (cx + half).toInt(), (cy + half).toInt()
+                )
+                d.setTint(fgColor)
+                d.draw(canvas)
+            } else {
+                drawBug(canvas, cx, cy, r)
+            }
             return
         }
 

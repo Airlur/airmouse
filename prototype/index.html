@@ -328,6 +328,24 @@
   .chip.x-connecting{color:var(--orange)}
   .chip.x-ok{color:var(--green)}
   .chip.x-fail{color:#FF3B30}
+  .sheetConn .big2 + .grp{margin-top:12px}
+
+  /* ================= 滚轮方向指示 ================= */
+  .scrollHint{position:absolute; right:14px; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:7px;
+    opacity:0; transition:opacity .18s ease; pointer-events:none}
+  .scrollHint.show{opacity:1}
+  .scrollHint i{display:block; width:0; height:0; border-left:7px solid transparent;
+    border-right:7px solid transparent; transition:opacity .12s ease}
+  .scrollHint i.up{border-bottom:9px solid var(--accent)}
+  .scrollHint i.down{border-top:9px solid var(--accent)}
+  /* 越靠近滚动方向的箭头越实，形成「流动」的感觉 */
+  .scrollHint.f1 i:nth-child(1){opacity:.22}
+  .scrollHint.f1 i:nth-child(2){opacity:.55}
+  .scrollHint.f1 i:nth-child(3){opacity:1}
+  .scrollHint.f2 i:nth-child(1){opacity:1}
+  .scrollHint.f2 i:nth-child(2){opacity:.55}
+  .scrollHint.f2 i:nth-child(3){opacity:.22}
 </style>
 </head>
 <body>
@@ -433,7 +451,7 @@
         <svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.63l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.65 8.85a.5.5 0 0 0 .12.63l2.03 1.58c-.03.31-.05.63-.05.94s.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.63l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.63l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
       </label>
       <label class="iconBtn" for="help" title="说明">?</label>
-      <label class="iconBtn" for="dbg" title="运行日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><ellipse cx="12" cy="13" rx="3.6" ry="5"/><circle cx="12" cy="6.6" r="1.9"/><path d="M10.7 5.4 9.4 3.9M13.3 5.4l1.3-1.5"/><path d="M8.4 10h-.1M8.4 13h-.1M8.4 16h-.1"/><path d="M15.6 10h.1M15.6 13h.1M15.6 16h.1"/><path d="M8.5 10 5.6 9.5M8.5 13H5.4M8.5 16l-2.9.5"/><path d="M15.5 10l2.9-.5M15.5 13h3.1M15.5 16l2.9.5"/></svg></label>
+      <label class="iconBtn" for="dbg" title="运行日志"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-2.81a5.985 5.985 0 0 0-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63A5.985 5.985 0 0 0 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81A5.985 5.985 0 0 0 12 21a5.985 5.985 0 0 0 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/></svg></label>
     </div>
 
     <div class="seg">
@@ -477,6 +495,7 @@
         <div class="zone bl">轻点 = 左键　·　连点两下按住 = 拖拽</div>
         <div class="zone br">长按 = 右键</div>
         <div class="dot" id="padDot"></div>
+        <div class="scrollHint" id="scrollHint"><i></i><i></i><i></i></div>
       </div>
 
       <div class="card">
@@ -644,8 +663,8 @@
 
 <!-- ================= 说明 ================= -->
 <div class="notes">
-  <h3>原型 v3.1 · 待确认</h3>
-  <div class="sub">App 代码未改动、未推送</div>
+  <h3>原型 v3.4</h3>
+  <div class="sub">App 代码已同步，等确认后推送</div>
 
   <div class="item"><b>这次改的</b>
     <ul>
@@ -1093,6 +1112,24 @@
     });
   }
 
+  /* ---------- 滚轮方向指示 ---------- */
+  var padEl = document.getElementById('pad'), scrollHint = document.getElementById('scrollHint');
+  if(padEl && scrollHint){
+    var hintTimer = null;
+    padEl.addEventListener('wheel', function(e){
+      e.preventDefault();
+      var up = e.deltaY < 0;
+      var arrows = scrollHint.children;
+      for(var i=0;i<arrows.length;i++){
+        arrows[i].className = up ? 'up' : 'down';
+      }
+      scrollHint.className = 'scrollHint show ' + (up ? 'f1' : 'f2');
+      if(hintTimer) clearTimeout(hintTimer);
+      hintTimer = setTimeout(function(){
+        scrollHint.className = 'scrollHint';
+      }, 520);
+    }, {passive:false});
+  }
   /* ---------- 连接模拟 ---------- */
   var pill = document.getElementById('pill'), pillTxt = document.getElementById('pillTxt');
   var connState = document.getElementById('connState'), connBox = document.getElementById('conn');

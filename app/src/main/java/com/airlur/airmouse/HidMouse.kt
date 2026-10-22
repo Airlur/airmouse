@@ -10,6 +10,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -208,10 +209,15 @@ class HidMouse(
         sendHandler.removeCallbacks(ticker)
         val ad = adapter
         val hd = proxy
+        // 不管 registered 是什么值都尝试注销一次。
+        // 系统只在 registerApp 之后才可能回调 registered=true，万一回调丢了，
+        // 只按 registered 判断就会漏掉注销，留下「HID 被占用」的坑，
+        // 下次 registerApp 直接返回 false，只能靠关蓝牙才能清掉。
         try {
-            if (hd != null && registered) hd.unregisterApp()
+            hd?.unregisterApp()
         } catch (_: Throwable) {
         }
+        registered = false
         try {
             if (ad != null && hd != null) {
                 ad.closeProfileProxy(BluetoothProfile.HID_DEVICE, hd)
@@ -220,8 +226,10 @@ class HidMouse(
         }
         proxy = null
         host = null
-        registered = false
         connectingDevice = null
+        phase = PHASE_IDLE
+        phaseAddress = null
+        phaseError = null
     }
 
     fun moveBy(dx: Float, dy: Float) {
@@ -691,12 +699,54 @@ class HidMouse(
             wheel.coerceIn(-MAX_CHUNK, MAX_CHUNK).toByte()
         )
         try {
-            hd.sendReport(dev, 0, report)
-            sentReports += 1
+            val ok = hd.sendReport(dev, 0, report)
+            if (ok) {
+                sentReports += 1
+                logSend(dx, dy, wheel)
+            } else {
+                failReports += 1
+                logSendFail()
+            }
         } catch (e: SecurityException) {
             Log.w(TAG, "sendReport 权限不足")
+            AppLog.add("SEND", "sendReport 权限不足")
         } catch (t: Throwable) {
             Log.w(TAG, "sendReport 失败", t)
+            AppLog.add("SEND", "sendReport 异常: " + t)
         }
+    }
+
+    /** sendReport 返回 false 的次数：报告没送出去，界面不会有任何反应 */
+    @Volatile private var failReports = 0L
+    private var lastFailLogAt = 0L
+
+    private fun logSendFail() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastFailLogAt < 1000L) return
+        lastFailLogAt = now
+        AppLog.add("SEND", "sendReport 返回 false，累计失败=" + failReports)
+    }
+
+    /**
+     * 发送日志做了限流：指针移动时每帧都会发一次报告，
+     * 不加限制会瞬间把日志冲爆，把真正的错误挤出缓冲区。
+     */
+    private var lastSendLogAt = 0L
+    private var sendLogSkipped = 0
+
+    private fun logSend(dx: Int, dy: Int, wheel: Int) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSendLogAt < 400L) {
+            sendLogSkipped++
+            return
+        }
+        lastSendLogAt = now
+        val skipped = if (sendLogSkipped > 0) " (+" + sendLogSkipped + " 条省略)" else ""
+        sendLogSkipped = 0
+        AppLog.add(
+            "SEND",
+            "dx=" + dx + " dy=" + dy + " wheel=" + wheel +
+                " btn=" + buttons + " 累计=" + sentReports + skipped
+        )
     }
 }

@@ -74,10 +74,50 @@ object IconManager {
     }
 
     /**
-     * 切换到指定图标。
+     * 只启用目标 alias，不动其它。
      *
-     * 顺序很重要：先启用目标，再禁用其它。
-     * 反过来会出现「一个都没启用」的瞬间，桌面会短暂看不到图标。
+     * 刻意不在同一时刻禁用其它图标：用户当前这个界面就是从「正在启用的那个 alias」
+     * 启动的，一旦把它禁用，系统会认为任务入口没了而杀掉进程 —— 表现就是
+     * 「AirMouse 屡次停止运行」。所以禁用动作推迟到 Activity 不可见之后。
+     */
+    fun enable(context: Context, index: Int): Boolean {
+        val target = index.coerceIn(0, COUNT - 1)
+        return try {
+            context.packageManager.setComponentEnabledSetting(
+                component(context, target),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            true
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
+    /** 禁用除 keep 之外的所有 alias。应在 Activity 已经不可见时调用。 */
+    fun disableOthers(context: Context, keep: Int): Boolean {
+        val target = keep.coerceIn(0, COUNT - 1)
+        val pm = context.packageManager
+        return try {
+            for (i in 0 until COUNT) {
+                if (i == target) continue
+                pm.setComponentEnabledSetting(
+                    component(context, i),
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+            }
+            true
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * 一步到位地切换（启用目标 + 禁用其它）。
+     *
+     * 仅用于「启动时纠正状态」这种不在前台交互的场景；
+     * 用户主动切换图标请走 [enable]，然后在 onStop 里调 [disableOthers]。
      */
     fun apply(context: Context, index: Int): Boolean {
         val target = index.coerceIn(0, COUNT - 1)

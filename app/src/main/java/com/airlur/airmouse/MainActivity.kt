@@ -57,6 +57,9 @@ class MainActivity : Activity(), HidMouse.Listener {
     private var debugOverlay: View? = null
     private var debugText: TextView? = null
 
+    /** 图标已切换，但其余 alias 要等界面不可见后再禁用（否则会杀进程） */
+    private var pendingIconDisable = -1
+
     private lateinit var pill: TextView
     private lateinit var segAir: TextView
     private lateinit var segPad: TextView
@@ -168,6 +171,21 @@ class MainActivity : Activity(), HidMouse.Listener {
         engine.stop()
         ui.removeCallbacks(tick)
         releaseAllButtons()
+    }
+
+    /**
+     * 图标切换的第二阶段。
+     *
+     * 界面已经不可见了，这时禁用其它 alias 才不会把当前进程当成
+     * 「入口消失」而杀掉，桌面才能稳定只显示一个新图标。
+     */
+    override fun onStop() {
+        super.onStop()
+        val keep = pendingIconDisable
+        if (keep >= 0) {
+            pendingIconDisable = -1
+            IconManager.disableOthers(this, keep)
+        }
     }
 
     override fun onDestroy() {
@@ -322,7 +340,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         row.addView(pill)
         row.addView(space(5))
 
-        val gear = IconButton(this, IconButton.KIND_SLIDERS)
+        val gear = IconButton(this, IconButton.KIND_ICON, R.drawable.ic_gear)
         gear.circleColor = pal.fillBtn
         gear.fgColor = pal.sec
         gear.setOnClickListener { showSettingsSheet() }
@@ -336,7 +354,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         row.addView(help)
         row.addView(space(5))
 
-        val bug = IconButton(this, IconButton.KIND_BUG)
+        val bug = IconButton(this, IconButton.KIND_ICON, R.drawable.ic_bug)
         bug.circleColor = pal.fillBtn
         bug.fgColor = pal.sec
         bug.setOnClickListener { openDebug() }
@@ -1129,7 +1147,12 @@ class MainActivity : Activity(), HidMouse.Listener {
         val discover = bigButton("", true)
         connDiscoverBtn = discover
         discover.setOnClickListener { onDiscoverButton() }
-        root.addView(discover)
+        root.addView(discover, fullWrap())
+
+        // 按钮和下面列表之间要留呼吸空间，否则贴在一起很难看
+        val gap = View(this)
+        gap.layoutParams = LinearLayout.LayoutParams(1, dp(12))
+        root.addView(gap)
 
         val devices = hid.bondedDevices()
         val rows = ArrayList<View>()
@@ -1232,32 +1255,18 @@ class MainActivity : Activity(), HidMouse.Listener {
 
         // 状态行只留必要信息
         connStateText?.let { t ->
-            val sb = StringBuilder()
-            when {
-                hid.isConnected -> {
-                    sb.append("已连接：").append(hid.connectedName)
-                }
-
-                hid.phase == HidMouse.PHASE_CONNECTING -> {
-                    sb.append("正在连接…")
-                }
-
-                hid.phase == HidMouse.PHASE_FAILED -> {
-                    sb.append("连接失败：").append(hid.phaseError ?: "未知原因")
-                }
-
-                hid.isRegistered -> {
-                    sb.append("未连接。点下面的设备发起连接")
-                }
-
-                else -> {
-                    sb.append("HID 未注册，暂不能连接")
-                }
+            val primary = when {
+                hid.isConnected -> "已连接：" + hid.connectedName
+                hid.phase == HidMouse.PHASE_CONNECTING -> "正在连接…"
+                hid.phase == HidMouse.PHASE_FAILED -> "连接失败，请查看运行日志"
+                hid.isRegistered -> "未连接。点下面的设备发起连接"
+                else -> "HID 未注册，请关闭蓝牙再打开后重试"
             }
-            if (hid.phase != HidMouse.PHASE_FAILED && lastStatus.isNotEmpty()) {
-                sb.append('\n').append(lastStatus)
-            }
-            t.text = sb.toString()
+            // lastStatus 常常和上面这行内容一样（比如都是「已连接：xxx」），
+            // 重复显示会出现两行一模一样的文字，所以相同就丢掉。
+            val extra = lastStatus.trim()
+            val showExtra = extra.isNotEmpty() && !primary.contains(extra) && !extra.contains(primary)
+            t.text = if (showExtra) primary + "\n" + extra else primary
             t.setTextColor(
                 when {
                     hid.isConnected -> pal.green
@@ -1504,9 +1513,12 @@ class MainActivity : Activity(), HidMouse.Listener {
             cell.setOnClickListener {
                 if (settings.appIcon == i) return@setOnClickListener
                 settings.appIcon = i
-                val ok = IconManager.apply(this, i)
+                // 只启用目标，先不禁用其它。当前界面就是由「正在启用的那个 alias」
+                // 启动的，当场禁用它会被系统当成入口消失而杀进程（表现为屡次停止运行）。
+                val ok = IconManager.enable(this, i)
+                pendingIconDisable = i
                 toastTop(
-                    if (ok) "已切换到「${IconManager.shortName(i)}」"
+                    if (ok) "已切换到「${IconManager.shortName(i)}」，回桌面即可看到"
                     else "切换失败，当前桌面可能不支持动态图标"
                 )
                 rebuildUi(SHEET_SETTINGS)
