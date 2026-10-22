@@ -13,3 +13,6 @@ captures/
 # OS
 .DS_Store
 Thumbs.db
+
+# 原型的临时截图
+prototype/preview-*.png

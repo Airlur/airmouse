@@ -68,6 +68,13 @@ class AirMouseEngine(context: Context) : SensorEventListener {
     val hasGyro: Boolean get() = gyro != null
     val hasRotation: Boolean get() = rotVec != null
 
+    /** 从设置同步参数（灵敏度、反向改完立即生效，不用重启） */
+    fun bindFrom(s: Settings) {
+        sensitivity = s.airSensitivity()
+        invertX = s.invertX
+        invertY = s.invertY
+    }
+
     // 旋转矩阵：R 把「机身坐标」映射到「世界坐标」（Android 世界系 X 东 Y 北 Z 天）
     private val rotMatrix = FloatArray(9)
     @Volatile private var hasRotationMatrix = false

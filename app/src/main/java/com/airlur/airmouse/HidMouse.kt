@@ -148,6 +148,19 @@ class HidMouse(
         }
     }
 
+    /** 完整的一次单击：按下 + 松开（用于左键轻点、右键、中键） */
+    fun click(mask: Int, holdMs: Long) {
+        if (host == null || proxy == null) return
+        setButton(mask, true)
+        sendHandler.postDelayed({
+            val hd = proxy
+            if (hd != null && host != null) {
+                buttons = buttons and mask.inv()
+                dirty = true
+            }
+        }, holdMs)
+    }
+
     fun connectDevice(device: BluetoothDevice) {
         val hd = proxy
         if (hd == null || !registered) {
