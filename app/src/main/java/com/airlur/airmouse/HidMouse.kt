@@ -471,6 +471,19 @@ class HidMouse(
         // 这里刻意用固定常量而不是 localName：某些机型上读名字可能抛异常，
         // 一旦抛在 registerApp 之前，注册就永远发不出去。
         val sdpName = "AirMouse"
+
+        // 先清一次可能残留的注册。
+        //
+        // 系统里 Bluetooth 服务保存着一个 mUserUid，只有注册它的进程或系统自身
+        // 才能清掉。断开 HID 连接后有些机型会主动撤销注册并留下这个占用，
+        // 此时直接 registerApp 会立刻返回 false（日志里能看到只有 2ms 的间隔）。
+        // 先 unregisterApp() 一次，能清掉「自己上一次」留下的占用。
+        try {
+            hd.unregisterApp()
+        } catch (t: Throwable) {
+            AppLog.add("HID", "  预清理 unregisterApp: " + t)
+        }
+
         AppLog.add("HID", "registerNow: sdpName=" + sdpName)
         val sdp = BluetoothHidDeviceAppSdpSettings(
             sdpName,
@@ -481,7 +494,8 @@ class HidMouse(
         )
         try {
             val ok = hd.registerApp(sdp, null, null, exec, callback)
-            AppLog.add("HID", "  registerApp() 返回 " + ok)
+            AppLog.add("HID", "  registerApp() 返回 " + ok +
+                "  描述符=" + HidDescriptors.MOUSE.size + "字节")
             if (!ok) {
                 status("registerApp 返回 false —— 这台设备可能禁用了 HID Device 角色")
                 notifyChanged()

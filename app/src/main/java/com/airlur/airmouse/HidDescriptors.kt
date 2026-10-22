@@ -11,6 +11,18 @@ package com.airlur.airmouse
  *
  * 用相对位移而不是绝对坐标，是因为 HID 鼠标本来就是相对设备，
  * 主机侧完全不需要知道「指针现在在哪」。
+ *
+ * ---------------------------------------------------------------------------
+ * 2026-10 修改说明（触控板移动无效）：
+ *
+ * 之前是「5 键 + 3 位填充」，且填充项写的是 0x81 0x01（Const, Array）。
+ * Array 与 Constant 是互斥语义，严格的 HID 解析器会在这里出错，
+ * 导致后面的 X/Y/Wheel 定义没被正确加载 —— 表现就是按键有效、移动无效。
+ *
+ * 现在改成微软标准鼠标描述符的写法：「3 键 + 5 位填充」，
+ * 填充项用 0x81 0x03（Const, Variable）。报告长度不变，仍是 4 字节。
+ * 只用左/右/中三个键，功能不受影响。
+ * ---------------------------------------------------------------------------
  */
 object HidDescriptors {
 
@@ -23,15 +35,15 @@ object HidDescriptors {
 
         0x05, 0x09,                      //     Usage Page (Button)
         0x19, 0x01,                      //     Usage Minimum (1)
-        0x29, 0x05,                      //     Usage Maximum (5)
+        0x29, 0x03,                      //     Usage Maximum (3)   -> 3 个按键
         0x15, 0x00,                      //     Logical Minimum (0)
         0x25, 0x01,                      //     Logical Maximum (1)
-        0x95.toByte(), 0x05,             //     Report Count (5)
+        0x95.toByte(), 0x03,             //     Report Count (3)
         0x75, 0x01,                      //     Report Size (1)
-        0x81.toByte(), 0x02,             //     Input (Data,Var,Abs)  -> 5 个按键位
+        0x81.toByte(), 0x02,             //     Input (Data,Var,Abs)  -> 3 个按键位
         0x95.toByte(), 0x01,             //     Report Count (1)
-        0x75, 0x03,                      //     Report Size (3)
-        0x81.toByte(), 0x01,             //     Input (Const,Array,Abs) -> 3 位补齐
+        0x75, 0x05,                      //     Report Size (5)
+        0x81.toByte(), 0x03,             //     Input (Const,Var,Abs) -> 5 位补齐
 
         0x05, 0x01,                      //     Usage Page (Generic Desktop)
         0x09, 0x30,                      //     Usage (X)

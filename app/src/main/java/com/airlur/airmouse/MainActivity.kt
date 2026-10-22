@@ -259,6 +259,10 @@ class MainActivity : Activity(), HidMouse.Listener {
 
         // 顶部提示条：必须加在抽屉之后，否则会被抽屉盖住
         val tv = toastView ?: txt("", 13f, 0xFFFFFFFF.toInt(), false).also { toastView = it }
+        // toastView 是跨 rebuild 复用的。它此时还挂在上一版 root 上，
+        // 直接 addView 会抛「The specified child already has a parent」，
+        // 表现为切换深浅色时闪退。先摘下来再加。
+        (tv.parent as? ViewGroup)?.removeView(tv)
         tv.setBackgroundColor(0xE6000000.toInt())
         tv.setPadding(dp(16), dp(10), dp(16), dp(10))
         tv.gravity = Gravity.CENTER_HORIZONTAL
