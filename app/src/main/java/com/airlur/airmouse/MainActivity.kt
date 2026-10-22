@@ -57,8 +57,6 @@ class MainActivity : Activity(), HidMouse.Listener {
     private var debugOverlay: View? = null
     private var debugText: TextView? = null
 
-    /** 图标已切换，但其余 alias 要等界面不可见后再禁用（否则会杀进程） */
-    private var pendingIconDisable = -1
 
     private lateinit var pill: TextView
     private lateinit var segAir: TextView
@@ -122,7 +120,6 @@ class MainActivity : Activity(), HidMouse.Listener {
 
         rebuildUi(SHEET_NONE)
         applySettings()
-        ensureIcon()
 
         engine.onDelta = { dx, dy ->
             hid.moveBy(dx, dy)
@@ -132,18 +129,6 @@ class MainActivity : Activity(), HidMouse.Listener {
         requestBluetoothPermissions()
     }
 
-    /**
-     * 确保桌面图标与设置一致。
-     *
-     * 只在真的不一致时才写，避免每次启动都动一遍组件状态
-     * （频繁调用会让部分启动器把图标重新排列）。
-     */
-    private fun ensureIcon() {
-        val want = settings.appIcon
-        if (IconManager.currentIndex(this) != want) {
-            IconManager.apply(this, want)
-        }
-    }
 
     private fun resolveDark(): Boolean {
         return when (settings.theme) {
@@ -173,20 +158,6 @@ class MainActivity : Activity(), HidMouse.Listener {
         releaseAllButtons()
     }
 
-    /**
-     * 图标切换的第二阶段。
-     *
-     * 界面已经不可见了，这时禁用其它 alias 才不会把当前进程当成
-     * 「入口消失」而杀掉，桌面才能稳定只显示一个新图标。
-     */
-    override fun onStop() {
-        super.onStop()
-        val keep = pendingIconDisable
-        if (keep >= 0) {
-            pendingIconDisable = -1
-            IconManager.disableOthers(this, keep)
-        }
-    }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -1336,14 +1307,13 @@ class MainActivity : Activity(), HidMouse.Listener {
         themeRow.addView(themeSelector())
         root.addView(themeRow, fullWrap())
 
-        // 桌面图标：和深色模式放进同一张卡片，中间自动有分割线
+        // 深色模式
         root.addView(
             group(
                 null,
                 sheetItem("深色模式", "切换后全部界面同步", sheetSwitch(resolveDark()) { v ->
                     applyTheme(if (v) Settings.THEME_DARK else Settings.THEME_LIGHT)
-                }),
-                iconSelector()
+                })
             )
         )
 
@@ -1451,117 +1421,9 @@ class MainActivity : Activity(), HidMouse.Listener {
         refreshStatus()
     }
 
-    /**
-     * 桌面图标选择器。
-     *
-     * 结构和「深色模式」那些行完全一致：
-     * 「桌面图标」本身是一行普通标题（同字号同颜色），与上一行之间由 group() 自动加分割线，
-     * 下面两排图标之间再一条分割线。
-     */
-    private fun iconSelector(): View {
-        val wrap = LinearLayout(this)
-        wrap.orientation = LinearLayout.VERTICAL
 
-        val titleRow = LinearLayout(this)
-        titleRow.orientation = LinearLayout.HORIZONTAL
-        titleRow.gravity = Gravity.CENTER_VERTICAL
-        titleRow.setPadding(dp(14), dp(11), dp(14), dp(4))
-        titleRow.addView(txt("桌面图标", 14.5f, pal.label, false), fullWrap())
-        wrap.addView(titleRow, fullWrap())
-
-        val current = settings.appIcon
-        val size = dp(44)
-
-        wrap.addView(iconRow(intArrayOf(
-            IconManager.ICON_K, IconManager.ICON_G, IconManager.ICON_I
-        ), current, size), fullWrap())
-
-        wrap.addView(divider(), fullWrap())
-
-        wrap.addView(iconRow(intArrayOf(
-            IconManager.ICON_K2, IconManager.ICON_G2, IconManager.ICON_I2
-        ), current, size), fullWrap())
-
-        return wrap
-    }
-
-    private fun iconRow(ids: IntArray, current: Int, size: Int): View {
-        val row = LinearLayout(this)
-        row.orientation = LinearLayout.HORIZONTAL
-        row.setPadding(dp(6), dp(10), dp(6), dp(10))
-
-        for (i in ids) {
-            val selected = (i == current)
-
-            val cell = LinearLayout(this)
-            cell.orientation = LinearLayout.VERTICAL
-            cell.gravity = Gravity.CENTER
-            cell.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-
-            val img = ImageView(this)
-            img.setImageResource(iconFgRes(i))
-            img.background = iconThumbBg(i, selected)
-            img.layoutParams = LinearLayout.LayoutParams(size, size)
-            cell.addView(img)
-
-            val label = txt(IconManager.shortName(i), 10.5f,
-                if (selected) pal.accent else pal.sec, selected)
-            label.gravity = Gravity.CENTER
-            label.setPadding(0, dp(6), 0, 0)
-            cell.addView(label)
-
-            cell.setOnClickListener {
-                if (settings.appIcon == i) return@setOnClickListener
-                settings.appIcon = i
-                // 只启用目标，先不禁用其它。当前界面就是由「正在启用的那个 alias」
-                // 启动的，当场禁用它会被系统当成入口消失而杀进程（表现为屡次停止运行）。
-                val ok = IconManager.enable(this, i)
-                pendingIconDisable = i
-                toastTop(
-                    if (ok) "已切换到「${IconManager.shortName(i)}」，回桌面即可看到"
-                    else "切换失败，当前桌面可能不支持动态图标"
-                )
-                rebuildUi(SHEET_SETTINGS)
-            }
-            row.addView(cell)
-        }
-        return row
-    }
-
-    /** 缩略图底：用图标自身的底色，再加一圈描边，浅底图标才不会糊在卡片上 */
-    private fun iconThumbBg(index: Int, selected: Boolean): GradientDrawable {
-        val fill = when (index) {
-            IconManager.ICON_I, IconManager.ICON_I2 -> 0xFF007AFF.toInt()
-            IconManager.ICON_K, IconManager.ICON_K2 -> 0xFF000000.toInt()
-            else -> 0xFFF2F2F7.toInt()
-        }
-        val d = GradientDrawable()
-        d.setColor(fill)
-        d.cornerRadius = dp(11).toFloat()
-        d.setStroke(dp(if (selected) 2 else 1), if (selected) pal.accent else pal.sep)
-        return d
-    }
-
-    /** 只取前景线条，底色由 iconThumbBg 负责 */
-    private fun iconFgRes(index: Int): Int = when (index) {
-        IconManager.ICON_I -> R.drawable.ic_i_fg
-        IconManager.ICON_K -> R.drawable.ic_k_fg
-        IconManager.ICON_G2 -> R.drawable.ic_g2_fg
-        IconManager.ICON_I2 -> R.drawable.ic_i2_fg
-        IconManager.ICON_K2 -> R.drawable.ic_k2_fg
-        else -> R.drawable.ic_g_fg
-    }
-
-    private fun iconRes(index: Int): Int = when (index) {
-        IconManager.ICON_I -> R.mipmap.ic_i
-        IconManager.ICON_K -> R.mipmap.ic_k
-        IconManager.ICON_G2 -> R.mipmap.ic_g2
-        IconManager.ICON_I2 -> R.mipmap.ic_i2
-        IconManager.ICON_K2 -> R.mipmap.ic_k2
-        else -> R.mipmap.ic_g
-    }
-
-    private fun themeSelector(): View {        val seg = LinearLayout(this)
+    private fun themeSelector(): View {
+        val seg = LinearLayout(this)
         seg.orientation = LinearLayout.HORIZONTAL
         seg.background = rounded(pal.track, 7)
         seg.setPadding(dp(2), dp(2), dp(2), dp(2))

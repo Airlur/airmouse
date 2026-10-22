@@ -30,97 +30,22 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
-        <!-- 真正的界面。launcher 入口都在下面的 alias 上，便于动态换图标 -->
+        <!--
+            只有一个入口。
+            之前用 activity-alias 做动态换图标，在华为桌面上会导致：
+            图标重复出现、切换后消失、甚至所有 alias 被禁用后应用彻底找不到。
+            该方案已放弃，图标固定为 @mipmap/ic_k。
+        -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
-            android:screenOrientation="portrait" />
-
-        <!--
-            桌面图标通过 activity-alias 实现动态切换：
-            同一时刻只启用一个 alias，其余禁用。见 IconManager.kt。
-            第一列：G / I / K（G 无外圈，I、K 是半圈高亮）
-            第二列：G2 / I2 / K2（外圈整圈高亮）
-            默认启用 K。
-        -->
-        <activity-alias
-            android:name=".IconG"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_g"
-            android:label="AirMouse"
-            android:targetActivity=".MainActivity">
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".IconI"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_i"
-            android:label="AirMouse"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".IconK"
-            android:enabled="true"
-            android:exported="true"
-            android:icon="@mipmap/ic_k"
-            android:label="AirMouse"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".IconG2"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_g2"
-            android:label="AirMouse"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".IconI2"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_i2"
-            android:label="AirMouse"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".IconK2"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_k2"
-            android:label="AirMouse"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
+        </activity>
     </application>
 
 </manifest>

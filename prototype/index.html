@@ -293,18 +293,6 @@
   .logoBox svg{display:block}
   .logoNote{ margin-top:18px; font-size:11px; color:#46505F; line-height:1.7; border-top:1px solid #1B2028; padding-top:12px; }
   @media (max-width:1100px){ .logoPanel{display:none} }
-    .iconTitleRow{padding:12px 14px 2px; font-size:14.5px; color:var(--label); border-top:.5px solid var(--sep)}
-.iconPickRow{display:flex; justify-content:space-around; padding:10px 6px}
-  .iconPickRow.sep{border-top:.5px solid var(--sep)}
-  .iconCell{text-align:center; cursor:pointer; padding:4px 2px; border-radius:10px}
-  .iconCell span{display:block; font-size:10.5px; color:var(--sec); margin-top:6px}
-  .iconCell.sel span{color:var(--accent); font-weight:600}
-  .iconThumb{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;
-    box-shadow:0 0 0 .5px var(--sep); transition:box-shadow .15s}
-  .iconCell.sel .iconThumb{box-shadow:0 0 0 2px var(--accent)}
-  .iconThumb.bgLight{background:#F2F2F7}
-  .iconThumb.bgInk{background:#000}
-  .iconThumb.bgBlue{background:#007AFF}
   /* ================= 运行日志页 ================= */
   .dbgPage{display:none; position:absolute; inset:0; z-index:40; background:var(--bg);
     flex-direction:column; padding:14px 16px 16px}
@@ -425,7 +413,7 @@
 
   <div class="logoNote">
     浅底用 <b style="color:#7FC4FF">#007AFF</b>，深底用 <b style="color:#7FC4FF">#0A84FF</b>。<br>
-    这六套已做进 App，可在「设置 → 桌面图标」实时切换，默认 K。
+    动态切换桌面图标在华为桌面上不可靠，已放弃，App 固定使用 K。
   </div>
 </div>
 <div class="phone" id="phone">
@@ -442,7 +430,6 @@
     <input type="checkbox" id="help" class="sr">
     <input type="checkbox" id="conn" class="sr">
     <input type="checkbox" id="set" class="sr">
-    <input type="checkbox" id="dbg" class="sr">
 
     <div class="head">
       <h1>AirMouse</h1>
@@ -587,17 +574,6 @@
         </div>
         <div class="grp">
           <div class="item"><div>深色模式<small>切到深色后所有界面同步</small></div><div class="sw" id="swDark"></div></div>
-          <div class="iconTitleRow">桌面图标</div>
-          <div class="iconPickRow">
-            <div class="iconCell sel" data-icon="K"><div class="iconThumb bgInk"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#FFFFFF" stroke-width="3" opacity=".2"/><path d="M54,28 A26,26 0 0,1 80,54" fill="none" stroke="#0A84FF" stroke-width="4.5" stroke-linecap="round"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>黑底蓝环</span></div>
-            <div class="iconCell" data-icon="G"><div class="iconThumb bgLight"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#007AFF" stroke-width="3" opacity=".27"/><path d="M54,28 A26,26 0 0,1 80,54" fill="none" stroke="#007AFF" stroke-width="4.5" stroke-linecap="round"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#007AFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#007AFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>白底蓝环</span></div>
-            <div class="iconCell" data-icon="I"><div class="iconThumb bgBlue"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#FFFFFF" stroke-width="3" opacity=".34"/><path d="M54,28 A26,26 0 0,1 80,54" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>蓝底白环</span></div>
-          </div>
-          <div class="iconPickRow sep">
-            <div class="iconCell" data-icon="K2"><div class="iconThumb bgInk"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#0A84FF" stroke-width="4.5"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>黑底全环</span></div>
-            <div class="iconCell" data-icon="G2"><div class="iconThumb bgLight"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#007AFF" stroke-width="4.5"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#007AFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#007AFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>白底全环</span></div>
-            <div class="iconCell" data-icon="I2"><div class="iconThumb bgBlue"><svg width="40" height="40" viewBox="0 0 108 108"><path d="M54,28 A26,26 0 1,1 53.9,28 Z" fill="none" stroke="#FFFFFF" stroke-width="4.5"/><path d="M45,50 A9,9 0 0,1 63,50 L63,58 A9,9 0 0,1 45,58 Z" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><line x1="54" y1="41" x2="54" y2="50" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg></div><span>蓝底全环</span></div>
-          </div>
         </div>
 
         <div class="grpTitle">手势</div>
@@ -663,7 +639,7 @@
 
 <!-- ================= 说明 ================= -->
 <div class="notes">
-  <h3>原型 v3.4</h3>
+  <h3>原型 v3.5</h3>
   <div class="sub">App 代码已同步，等确认后推送</div>
 
   <div class="item"><b>这次改的</b>
@@ -1061,7 +1037,6 @@
     });
   }
   bindPicker('.logoCell', 'sel');
-  bindPicker('.iconCell', 'sel');
 
   /* ---------- 运行日志页 ---------- */
   var dbgLines = [

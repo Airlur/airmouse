@@ -26,8 +26,6 @@ class Settings(context: Context) {
         /** 触控板指针倍率上限，防止高灵敏度下指针甩飞 */
         const val PAD_GAIN_MAX = 2.0f
 
-        /** 默认桌面图标方案（K） */
-        const val DEF_ICON = 2
 
         private const val KEY_THEME = "theme"
         private const val KEY_AIR_SENS = "air_sens"
@@ -47,7 +45,6 @@ class Settings(context: Context) {
         private const val KEY_DIAG = "show_diag"
         private const val KEY_WHEEL_INV = "wheel_invert"
         private const val KEY_AUTO_RECONNECT = "auto_reconnect"
-        private const val KEY_ICON = "app_icon"
     }
 
     private val sp = context.getSharedPreferences("airmouse_prefs", Context.MODE_PRIVATE)
@@ -126,10 +123,6 @@ class Settings(context: Context) {
         get() = sp.getBoolean(KEY_AUTO_RECONNECT, true)
         set(v) = sp.edit().putBoolean(KEY_AUTO_RECONNECT, v).apply()
 
-    /** 桌面图标方案索引，见 IconManager */
-    var appIcon: Int
-        get() = sp.getInt(KEY_ICON, DEF_ICON)
-        set(v) = sp.edit().putInt(KEY_ICON, v).apply()
 
     /** 空鼠灵敏度：0..100 -> 300..3000 */
     fun airSensitivity(): Double = 300.0 + airSens * 27.0
