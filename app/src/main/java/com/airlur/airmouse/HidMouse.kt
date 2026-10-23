@@ -52,14 +52,22 @@ class HidMouse(
         private const val TAG = "HidMouse"
         private const val TICK_MS = 16L
         private const val MAX_CHUNK = 127
-        /** 累积上限。放大容易让指针「甩飞」，这里压到 240 像素 */
-        private const val MAX_ACCUM = 240f
+        /**
+         * 累积上限：每个 16ms 节拍最多送出的位移。
+         * 32px/tick ≈ 2000px/s 封顶，且 32 < MAX_CHUNK，一拍只发一帧报告；
+         * 之前的 240 会拆成两帧 127 砸出去，平板上表现为指针突然大幅跳动。
+         */
+        private const val MAX_ACCUM = 32f
 
         /** 点了连接之后多久还没连上就判定失败 */
         private const val CONNECT_TIMEOUT_MS = 12000L
 
         /** 断线后自动重连：最多尝试次数与退避间隔 */
         private val RETRY_DELAYS = longArrayOf(2000L, 4000L, 8000L, 15000L, 30000L)
+
+        /** 注册被系统撤销后自动重新注册的退避间隔（毫秒）。
+         *  注册槽被占用后往往要过几秒才释放，间隔递增多重试几次 */
+        private val RE_REGISTER_DELAYS = longArrayOf(1000L, 2000L, 4000L, 8000L, 16000L)
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -97,6 +105,9 @@ class HidMouse(
     @Volatile private var registerRetry = 0
     @Volatile private var stopped = false
 
+    /** 切换设备时：等旧连接断开后要立即连接的新设备 */
+    @Volatile private var pendingSwitchTo: BluetoothDevice? = null
+
     private var connectTimeout: Runnable = Runnable { }
 
     /** 是否允许断线自动重连 */
@@ -111,7 +122,7 @@ class HidMouse(
     val connectedName: String get() = safeName(host)
     val isConnecting: Boolean get() = connectingDevice != null
 
-    /** 本机蓝牙名称——平板蓝牙列表里找的就是这个名字，不是 AirMouse */
+    /** 本机蓝牙名称——对方设备的蓝牙列表里找的就是这个名字，不是 AirMouse */
     val localName: String
         get() = try {
             adapter?.name ?: "本机"
@@ -226,6 +237,7 @@ class HidMouse(
         }
         proxy = null
         host = null
+        pendingSwitchTo = null
         connectingDevice = null
         phase = PHASE_IDLE
         phaseAddress = null
@@ -272,10 +284,19 @@ class HidMouse(
         AppLog.add("HID", "  当前状态: proxy=" + (proxy != null) + " registered=" + registered)
 
         val hd = proxy
-        if (hd == null || !registered) {
-            // 不再静默返回：界面必须看到失败原因
-            fail(device, if (hd == null) "HID 服务未就绪" else "未注册为蓝牙鼠标")
-            status("还没注册成鼠标，请稍等一秒再试")
+        if (hd == null) {
+            fail(device, "HID 服务未就绪")
+            status("HID 服务还没就绪，稍等一秒再试")
+            notifyChanged()
+            return
+        }
+        if (!registered) {
+            // 点击连接时顺手立即重试一次注册，别让用户干等自动重试的间隔
+            fail(device, "尚未注册为蓝牙鼠标")
+            status("尚未注册成功，正在立即重试注册…")
+            sendHandler.post {
+                if (!registered && !registerNow(hd)) scheduleReRegister()
+            }
             notifyChanged()
             return
         }
@@ -300,6 +321,33 @@ class HidMouse(
 
         sendHandler.post {
             try {
+                val cur = host
+                if (cur != null && cur.address != device.address) {
+                    // 一台手机同一时刻只能连一个主机：切换设备必须先断开当前连接，
+                    // 否则新连接永远建立不起来（表现为 12 秒连接超时）
+                    pendingSwitchTo = device
+                    status("先断开 ${safeName(cur)}，再连接 $name …")
+                    AppLog.add("HID", "  切换：先断开 " + safeName(cur))
+                    hd.disconnect(cur)
+                    // 兜底：等 2.5 秒还没等到断开回调，就直接发起连接
+                    sendHandler.postDelayed({
+                        if (pendingSwitchTo?.address == device.address) {
+                            pendingSwitchTo = null
+                            try {
+                                val ok = hd.connect(device)
+                                AppLog.add("HID", "  切换兜底 connect() 返回 " + ok)
+                                if (!ok) {
+                                    fail(device, "连接请求被拒绝")
+                                    notifyChanged()
+                                }
+                            } catch (_: Throwable) {
+                            }
+                        }
+                    }, 2500L)
+                    notifyChanged()
+                    return@post
+                }
+                pendingSwitchTo = null
                 val ok = hd.connect(device)
                 AppLog.add("HID", "  connect() 返回 " + ok)
                 if (ok) {
@@ -368,7 +416,7 @@ class HidMouse(
                 emptyList<BluetoothDevice>()
             }
             if (list.isNullOrEmpty()) {
-                status("当前没有已连接的设备。若平板还显示连着，请在平板上「忽略此设备」")
+                status("当前没有已连接的设备。若对方设备还显示连着，请在那台设备上「忽略此设备」")
                 notifyChanged()
                 return
             }
@@ -452,7 +500,7 @@ class HidMouse(
                 return
             }
             proxy = hd
-            registerNow(hd)
+            if (!registerNow(hd)) scheduleReRegister()
         }
 
         override fun onServiceDisconnected(profile: Int) {
@@ -466,8 +514,9 @@ class HidMouse(
         }
     }
 
-    private fun registerNow(hd: BluetoothHidDevice) {
-        // SDP 里的名字只用于「浏览服务」，平板蓝牙列表显示的是本机蓝牙名。
+    /** 注册并返回 registerApp 的即时结果（true 只代表请求被受理） */
+    private fun registerNow(hd: BluetoothHidDevice): Boolean {
+        // SDP 里的名字只用于「浏览服务」，对方设备的蓝牙列表显示的是本机蓝牙名。
         // 这里刻意用固定常量而不是 localName：某些机型上读名字可能抛异常，
         // 一旦抛在 registerApp 之前，注册就永远发不出去。
         val sdpName = "AirMouse"
@@ -492,22 +541,18 @@ class HidMouse(
             BluetoothHidDevice.SUBCLASS1_MOUSE,
             HidDescriptors.MOUSE
         )
-        try {
+        return try {
             val ok = hd.registerApp(sdp, null, null, exec, callback)
             AppLog.add("HID", "  registerApp() 返回 " + ok +
                 "  描述符=" + HidDescriptors.MOUSE.size + "字节")
-            if (!ok) {
-                status("registerApp 返回 false —— 这台设备可能禁用了 HID Device 角色")
-                notifyChanged()
-            }
+            ok
         } catch (e: SecurityException) {
             AppLog.add("HID", "  registerApp SecurityException: " + e.message)
             status("缺少蓝牙权限")
-            notifyChanged()
+            false
         } catch (t: Throwable) {
             AppLog.add("HID", "  registerApp 异常: " + t)
-            status("注册异常：${t.message}")
-            notifyChanged()
+            false
         }
     }
 
@@ -518,7 +563,7 @@ class HidMouse(
                 " plugged=" + safeName(pluggedDevice))
             registered = isRegistered
             if (isRegistered) {
-                status("已注册为蓝牙鼠标，等待平板连接")
+                status("已注册为蓝牙鼠标，等待设备连接")
                 registerRetry = 0
                 if (pluggedDevice != null) {
                     lastDevice = pluggedDevice
@@ -583,20 +628,57 @@ class HidMouse(
                 }
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    // 切换设备时可能出现「迟到的断开回调」：兜底定时器已经把新设备连上
+                    //（host 已指向新设备），旧设备的 DISCONNECTED 才姗姗来迟。
+                    // 这时绝不能清状态，否则会把新连接打掉。
+                    if (host != null && device != null && host?.address != device.address) {
+                        AppLog.add("HID", "忽略旧设备的迟到断开回调: " + safeName(device))
+                        return
+                    }
                     val wasHost = host != null
                     host = null
                     connectingDevice = null
                     sendHandler.removeCallbacks(ticker)
                     main.removeCallbacks(connectTimeout)
-                    if (phase == PHASE_CONNECTING) {
-                        fail(device, "连接失败：设备未响应")
-                    } else if (wasHost) {
-                        phase = PHASE_IDLE
-                        phaseAddress = null
-                        phaseError = null
+
+                    // 切换设备：旧连接已断开，立刻连接新设备，不走常规重连
+                    var handledSwitch = false
+                    val switchTo = pendingSwitchTo
+                    if (switchTo != null) {
+                        pendingSwitchTo = null
+                        val hd2 = proxy
+                        if (hd2 != null && registered) {
+                            try {
+                                val ok = hd2.connect(switchTo)
+                                AppLog.add("HID", "  切换：旧连接已断开，connect() 返回 " + ok)
+                                if (ok) {
+                                    status("已断开旧设备，正在连接 ${safeName(switchTo)} …")
+                                } else {
+                                    fail(switchTo, "连接请求被拒绝")
+                                }
+                            } catch (t: Throwable) {
+                                AppLog.add("HID", "  切换 connect 异常: " + t)
+                                fail(switchTo, "连接失败：" + t.message)
+                            }
+                        } else {
+                            fail(switchTo, "HID 注册已失效")
+                        }
+                        handledSwitch = true
                     }
-                    status(if (wasHost) "连接已断开" else "设备未连接")
-                    scheduleRetry()
+
+                    if (!handledSwitch) {
+                        if (phase == PHASE_CONNECTING && phaseAddress == device?.address) {
+                            // 只在「正在连的就是刚断开的这台」时才判失败；
+                            // 切换设备过程中旧设备断开属于预期，不该报错
+                            fail(device, "连接失败：设备未响应")
+                        } else if (wasHost && phase != PHASE_CONNECTING) {
+                            phase = PHASE_IDLE
+                            phaseAddress = null
+                            phaseError = null
+                        }
+                        status(if (wasHost) "连接已断开" else "设备未连接")
+                        scheduleRetry()
+                    }
                 }
             }
             notifyChanged()
@@ -620,6 +702,7 @@ class HidMouse(
 
         override fun onVirtualCableUnplug(device: BluetoothDevice?) {
             host = null
+            pendingSwitchTo = null
             connectingDevice = null
             sendHandler.removeCallbacks(ticker)
             status("主机断开了虚拟线缆")
@@ -643,29 +726,39 @@ class HidMouse(
         status("${delay / 1000} 秒后尝试重连…")
     }
 
-    /** HID 应用被系统注销后重新注册，最多 3 次，间隔递增 */
+    /**
+     * HID 应用被系统注销后自动重新注册。
+     * 注册槽可能要过几秒才被系统释放，所以按递增间隔多重试；
+     * 用尽后才提示手动处理（开关蓝牙 / 从最近任务划掉重开）。
+     */
     private fun scheduleReRegister() {
         if (stopped) return
         val hd = proxy
         if (hd == null) return
-        if (registerRetry >= 3) {
-            status("重新注册失败，请退出重进 App")
+        if (registered) return
+        if (registerRetry >= RE_REGISTER_DELAYS.size) {
+            status("自动重新注册失败：请开关一次蓝牙，或从最近任务里划掉 AirMouse 重开")
+            notifyChanged()
             return
         }
-        val delay = 800L * (registerRetry + 1)
+        val delay = RE_REGISTER_DELAYS[registerRetry]
         registerRetry++
         main.removeCallbacks(reRegisterRunnable)
         main.postDelayed(reRegisterRunnable, delay)
+        status("HID 注册被占用，${delay / 1000} 秒后自动重试（第 $registerRetry/${RE_REGISTER_DELAYS.size} 次）")
     }
 
     private val reRegisterRunnable = object : Runnable {
         override fun run() {
             if (stopped || registered) return
             val hd = proxy ?: return
-            try {
+            val ok = try {
                 registerNow(hd)
             } catch (_: Throwable) {
+                false
             }
+            // 失败必须再排下一次，否则一次失败就永远躺着（v3.7 及之前的老毛病）
+            if (!ok) scheduleReRegister()
         }
     }
 

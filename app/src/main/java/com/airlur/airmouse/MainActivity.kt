@@ -1075,7 +1075,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         root.addView(sheetPara("两种模式", "空鼠：握着手机转手腕控制指针，适合靠坐、远距离。\n触控板：手机放桌上，手指在白色区域滑动，像笔记本触摸板。"))
         root.addView(sheetPara("顶部状态胶囊", "灰＝未注册，橙＝待连接，绿＝已连接。点它打开连接面板。"))
         root.addView(sheetPara("配对 ≠ 连接", "「已配对」只表示双方认识、记住了地址；「已连接」才是鼠标真正能用。\n在连接面板里点设备才会真正建立连接。"))
-        root.addView(sheetPara("平板里该找哪个名字", "找你的手机蓝牙名称（本机名称见连接面板顶部），不是「AirMouse」。\nAirMouse 只是 HID 服务名，普通蓝牙列表里不显示。"))
+        root.addView(sheetPara("对方设备里该找哪个名字", "找你的手机蓝牙名称（本机名称见连接面板顶部），不是「AirMouse」。\nAirMouse 只是 HID 服务名，普通蓝牙列表里不显示。"))
         root.addView(sheetPara("框选 / 拖拽（两种都支持）", "双击拖拽：轻点一下 → 在设定时间内再按住并滑动 → 松手结束。适合手机放桌上。\n按钮锁定：按住左键到设定时长变蓝锁定 → 滑动手腕或面板 → 再点一下释放。适合单手握机。\n两者可在设置里分别开关。"))
         root.addView(sheetPara("触控板手势", "单指滑＝移动指针；轻点＝左键；双击按住＝拖拽；长按＝右键；双指滑＝滚轮。"))
         root.addView(sheetPara("灵敏度 / 指针速度", "空鼠的「灵敏度」是转手腕的放大倍数；触控板的「指针速度」是手指滑动的放大倍数。"))
@@ -1111,7 +1111,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         connDisconnectBtn = null
 
         val root = sheetRoot()
-        root.addView(sheetTitle("连接平板"))
+        root.addView(sheetTitle("连接设备"))
 
         val state = txt("", 12f, pal.sec, false)
         state.setLineSpacing(0f, 1.3f)
@@ -1132,7 +1132,7 @@ class MainActivity : Activity(), HidMouse.Listener {
         val devices = hid.bondedDevices()
         val rows = ArrayList<View>()
         if (devices.isEmpty()) {
-            rows.add(sheetItem("没有已配对设备", "先在平板上搜索并配对手机", null))
+            rows.add(sheetItem("没有已配对设备", "先在要控制的设备上搜索并配对手机", null))
         } else {
             for (d in devices) {
                 val name = try {
@@ -1223,7 +1223,7 @@ class MainActivity : Activity(), HidMouse.Listener {
                 btn.text = "可被发现中 · ${sec / 60}:${String.format(java.util.Locale.US, "%02d", sec % 60)} · 点击关闭"
                 btn.background = rounded(pal.orange, 12)
             } else {
-                btn.text = "让平板发现我（5 分钟）"
+                btn.text = "让设备发现我（5 分钟）"
                 btn.background = rounded(pal.accent, 12)
             }
         }
@@ -1711,7 +1711,7 @@ class MainActivity : Activity(), HidMouse.Listener {
             discoverUntil = SystemClock.elapsedRealtime() + resultCode * 1000L
             ui.removeCallbacks(discoverTick)
             ui.post(discoverTick)
-            toastTop("已开启可被发现 $resultCode 秒，请在平板上搜索「${hid.localName}」")
+            toastTop("已开启可被发现 $resultCode 秒，请在要连接的设备上搜索「${hid.localName}」")
         } else {
             discoverUntil = 0
             refreshConnectSheet()

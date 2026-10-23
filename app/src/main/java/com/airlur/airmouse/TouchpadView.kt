@@ -50,7 +50,7 @@ class TouchpadView(context: Context) : View(context) {
 
     /** 单个事件允许的最大位移，防止异常事件把指针甩飞 */
     private val maxStep: Float
-        get() = 220f * resources.displayMetrics.density
+        get() = 40f * resources.displayMetrics.density
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -209,6 +209,13 @@ class TouchpadView(context: Context) : View(context) {
     }
 
     private fun handleMove(event: MotionEvent) {
+        // 双指手势发生过之后（哪怕只剩一根手指），指针保持锁定直到全部抬起。
+        // 否则「两指中点 → 单指位置」会算出一次巨大位移，指针直接飞出去。
+        if (twoFinger && event.pointerCount < 2) {
+            lastX = event.x
+            lastY = event.y
+            return
+        }
         if (event.pointerCount >= 2) {
             val y = avgY(event)
             val dy = y - lastY

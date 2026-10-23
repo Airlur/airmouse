@@ -11,8 +11,8 @@ android {
         applicationId = "com.airlur.airmouse"
         minSdk = 28
         targetSdk = 34
-        versionCode = 10
-        versionName = "3.7"
+        versionCode = 11
+        versionName = "3.7.1"
     }
 
     /**

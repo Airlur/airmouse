@@ -556,11 +556,12 @@
       <label class="sheetBg" for="conn"></label>
       <div class="sheetBody">
         <div class="grabber"></div>
-        <h4>连接平板</h4>
-        <div class="sub2" id="connState">已注册为蓝牙鼠标，等待平板连接</div>
-        <div class="big2" id="btnDiscover">让平板发现我（5 分钟）</div>
+        <h4>连接设备</h4>
+        <div class="sub2" id="connState">已注册为蓝牙鼠标，等待设备连接</div>
+        <div class="big2" id="btnDiscover">让设备发现我（5 分钟）</div>
         <div class="grp">
           <div class="item" id="devMate"><div>MatePad Pro 10.8<small>已配对 · 3C:8B:…</small></div><span class="chip x-idle" id="chipMate"><i></i>连接</span></div>
+          <div class="item" id="devK30"><div>Redmi K30 Ultra<small>已配对 · 94:17:…</small></div><span class="chip x-idle" id="chipK30"><i></i>连接</span></div>
           <div class="item" id="devOther"><div>其他已配对设备…<small>点击自动连接</small></div><span class="tail">›</span></div>
         </div>
         <div class="big2 gray" id="btnDisconnect">当前未连接</div>
@@ -662,45 +663,47 @@
 
 <!-- ================= 说明 ================= -->
 <div class="notes">
-  <h3>原型 v3.6 · 待确认</h3>
-  <div class="sub">App 代码已同步，等确认后推送</div>
+  <h3>原型 v3.7.1 · 已确认</h3>
+  <div class="sub">文案已通用化：连接的是「设备」，不限于平板</div>
 
-  <div class="item"><b>这次改的</b>
+  <div class="item"><b>1 · 切换设备（连接面板可演示）</b>
     <ul>
-      <li>抽屉改成<b style="display:inline;color:#D8D8DE">左右下无缝贴边</b>，只圆上方两个角，加抓手条</li>
-      <li>顶部新增<b style="display:inline;color:#D8D8DE">齿轮设置</b>按钮（? 左边）</li>
-      <li>新增<b style="display:inline;color:#D8D8DE">深色模式</b>，整个界面连同抽屉一起切换</li>
-      <li>手势时长全部改成<b style="display:inline;color:#D8D8DE">滑杆可调</b></li>
+      <li>连接面板现在有两个设备行（MatePad / K30）</li>
+      <li>连着一台时点另一台：<b style="display:inline;color:#D8D8DE">先自动断开当前 → 再连接新选的</b>，不再出现 12 秒超时</li>
+      <li>点已连接的设备 → 提示「已连接，可直接使用」</li>
     </ul>
   </div>
 
-  <div class="item"><b>设置里放了这些</b>
+  <div class="item"><b>2 · 后台回来变「未注册」</b>
     <ul>
-      <li>外观：浅色 / 深色 / 跟随系统</li>
-      <li>手势开关：双击拖拽、按钮锁定（可分别关）</li>
-      <li>时间参数：双击窗口、长按右键、锁定时长、轻点上限、滚轮步长</li>
-      <li>其他：震动、常亮、中键、诊断显示</li>
-      <li>恢复默认</li>
+      <li>华为撤销注册后，自动重试注册（最多 5 次，间隔 1/2/4/8/16 秒递增）</li>
+      <li>提示改为真实原因：「注册被占用，N 秒后重试」；重试用尽才要求重开</li>
+      <li>连接面板在未注册时点击连接 = 立即触发一次重试</li>
     </ul>
   </div>
 
-  <div class="item"><b>还能再加的（你定）</b>
+  <div class="item"><b>3 · 双指滚动的指针乱飞</b>
     <ul>
-      <li><b>灵敏度</b>也挪进设置，主界面只留一条常用滑杆</li>
-      <li><b>开机自启 / 自动重连</b>、断线提示音</li>
-      <li><b>指针加加速度曲线</b>（线性 / 平滑 / 激进三档）</li>
-      <li><b>中键行为</b>：中键单击 / 自动滚动</li>
-      <li><b>手势录制</b>：自定义三指、四指动作</li>
-      <li><b>调试日志导出</b>：出问题直接发我日志</li>
+      <li>双指手势一旦开始，指针锁定，直到手指全部抬起</li>
+      <li>滚动结束后残留的那根手指不再带动指针（修「评论区滚一下，鼠标飞到视频区」）</li>
+      <li>第二指落下前第一指的小幅漂移仍可能动一点（与笔记本触摸板一致），大幅飞出已消除</li>
+    </ul>
+  </div>
+
+  <div class="item"><b>4 · 默认手感参数（无界面，随本轮一起改）</b>
+    <ul>
+      <li>指针单帧上限 240 → 32（约 2000 px/s 封顶，不再出现 127 巨帧跳动）</li>
+      <li>单次触摸事件上限 220dp → 40dp</li>
+      <li>滚轮方向默认不变（你已用设置里的开关解决）</li>
     </ul>
   </div>
 
   <div class="ask">
     <b style="color:#CFE0F5;display:block;margin-bottom:4px">确认后我再动代码</b>
-    原型 OK 就说一声，我同步 Kotlin、精简 README、Release 按版本号打 tag，一起推。
+    原型 OK 就说一声，我同步 Kotlin、本地编译自查，等你明确说「推送」才 commit + push。
   </div>
 
-  <div class="foot">流程：先改 HTML → 你确认 → 再同步 Kotlin</div>
+  <div class="foot">流程：先改 HTML → 你确认 → 再同步 Kotlin → 你说推送才推送</div>
 </div>
 
 <script>
@@ -1138,36 +1141,71 @@
     if (connState) connState.textContent = sheetText;
   }
   document.getElementById('btnDiscover').addEventListener('click', function(){
-    setState('wait','可被发现','已开启可被发现（5 分钟），请在平板上搜索 AirMouse');
+    setState('wait','可被发现','已开启可被发现（5 分钟），请在要连接的设备上搜索本机蓝牙名');
     toast('已开启可被发现');
   });
-var chipMate = document.getElementById('chipMate');
   var btnDisconnect = document.getElementById('btnDisconnect');
-  function setChip(cls, txt){
-    if(!chipMate) return;
-    chipMate.className = 'chip ' + cls;
-    chipMate.innerHTML = '<i></i>' + txt;
+  var DEVLIST = [
+    { row:'devMate', chip:'chipMate', name:'MatePad Pro 10.8' },
+    { row:'devK30',  chip:'chipK30',  name:'Redmi K30 Ultra' }
+  ];
+  var connectedName = null;
+  function findDev(name){
+    for (var i = 0; i < DEVLIST.length; i++) if (DEVLIST[i].name === name) return DEVLIST[i];
+    return null;
   }
-  document.getElementById('devMate').addEventListener('click', function(){
-    // 演示三态：连接中 -> 已连接
-    setChip('x-connecting','连接中…');
-    setState('wait','待连接','正在连接…');
-    toast('正在连接「MatePad Pro 10.8」…');
+  function setChipById(id, cls, txt){
+    var c = document.getElementById(id);
+    if (!c) return;
+    c.className = 'chip ' + cls;
+    c.innerHTML = '<i></i>' + txt;
+  }
+  function connectTo(d){
+    setChipById(d.chip,'x-connecting','连接中…');
+    setState('wait','连接中','正在连接：' + d.name);
+    toast('正在连接「' + d.name + '」…');
     setTimeout(function(){
-      setChip('x-ok','已连接');
-      setState('ok','已连接','已连接：MatePad Pro 10.8');
-      if(btnDisconnect) btnDisconnect.textContent = '断开「MatePad Pro 10.8」';
+      connectedName = d.name;
+      setChipById(d.chip,'x-ok','已连接');
+      setState('ok','已连接','已连接：' + d.name);
+      if (btnDisconnect) btnDisconnect.textContent = '断开「' + d.name + '」';
       connBox.checked = false;
     }, 1200);
+  }
+  DEVLIST.forEach(function(d){
+    var row = document.getElementById(d.row);
+    if (!row) return;
+    row.addEventListener('click', function(){
+      if (connectedName === d.name){
+        toast('「' + d.name + '」已连接，可直接使用');
+        return;
+      }
+      var old = connectedName ? findDev(connectedName) : null;
+      if (old){
+        // v3.7.1 新行为：切换设备 = 先自动断开当前设备，再连接新选的
+        setChipById(old.chip,'x-connecting','断开中…');
+        setState('wait','切换中','正在断开：' + old.name + '，随后连接：' + d.name);
+        toast('先断开「' + old.name + '」，再连「' + d.name + '」');
+        setTimeout(function(){
+          setChipById(old.chip,'x-idle','连接');
+          connectedName = null;
+          connectTo(d);
+        }, 900);
+        return;
+      }
+      connectTo(d);
+    });
   });
-  if(btnDisconnect){
+  if (btnDisconnect){
     btnDisconnect.addEventListener('click', function(){
-      if(btnDisconnect.textContent.indexOf('断开') !== 0){
+      if (!connectedName){
         toast('当前没有已连接的设备');
         return;
       }
-      setChip('x-idle','连接');
-      setState('wait','待配对','已断开，等待平板重新连接');
+      var old = findDev(connectedName);
+      if (old) setChipById(old.chip,'x-idle','连接');
+      connectedName = null;
+      setState('wait','待配对','已断开，等待重新连接');
       btnDisconnect.textContent = '当前未连接';
       toast('已断开');
     });
